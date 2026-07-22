@@ -23,6 +23,17 @@ export function crearAplicacion() {
   app.use(cors({ origin: configuracion.urlFrontend, credentials: true }));
   app.use(express.json({ limit: '15mb' }));
 
+  app.get('/', (req, res) => {
+    enviarExito(res, {
+      mensaje: 'API SGBE en línea.',
+      datos: {
+        servicio: 'api-becas',
+        version: 'v1',
+        salud: '/api/salud'
+      }
+    });
+  });
+
   app.get('/api/salud', (req, res) => {
     enviarExito(res, {
       mensaje: 'Servicio disponible.',
