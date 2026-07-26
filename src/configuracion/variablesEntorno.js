@@ -37,6 +37,13 @@ export const configuracion = {
     contrasena: process.env.SMTP_PASSWORD || '',
     remitente: process.env.SMTP_FROM || 'SGBE CUC <no-responder@cuc.ac.cr>'
   },
+  googleCorreo: {
+    clientId: process.env.GOOGLE_OAUTH_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || '',
+    refreshToken: process.env.GOOGLE_OAUTH_REFRESH_TOKEN || '',
+    redirectUri: process.env.GOOGLE_OAUTH_REDIRECT_URI || 'https://developers.google.com/oauthplayground',
+    usuario: process.env.GOOGLE_OAUTH_USER || ''
+  },
   archivos: {
     tamanoMaximoMb: obtenerNumero(process.env.TAMANO_MAXIMO_ARCHIVO_MB, 8),
     extensionesPermitidas: ['pdf', 'jpg', 'jpeg', 'png']

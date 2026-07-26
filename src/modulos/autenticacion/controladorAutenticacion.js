@@ -7,15 +7,29 @@ function contextoPeticion(req) {
 }
 
 export const registro = asincrono(async (req, res) => {
-  await servicio.registrarUsuario(req.body);
+  const resultado = await servicio.registrarUsuario(req.body);
   enviarExito(res, {
-    mensaje: 'Cuenta creada correctamente. Ya puede iniciar sesión.',
+    mensaje: 'Cuenta creada. Revise su correo e ingrese el código para activar la cuenta.',
+    datos: resultado,
     estadoHttp: 201
   });
 });
 
+export const verificarRegistro = asincrono(async (req, res) => {
+  await servicio.verificarCodigoRegistro(req.body);
+  enviarExito(res, { mensaje: 'Cuenta activada correctamente. Ya puede iniciar sesión.' });
+});
+
 export const iniciarSesion = asincrono(async (req, res) => {
   const resultado = await servicio.iniciarSesion(req.body, contextoPeticion(req));
+  const mensaje = resultado?.requiereDosFactores
+    ? 'Se envió un código de verificación al correo registrado.'
+    : 'Sesión iniciada correctamente.';
+  enviarExito(res, { mensaje, datos: resultado });
+});
+
+export const verificarDosFactores = asincrono(async (req, res) => {
+  const resultado = await servicio.verificarCodigoDosFactores(req.body, contextoPeticion(req));
   enviarExito(res, { mensaje: 'Sesión iniciada correctamente.', datos: resultado });
 });
 

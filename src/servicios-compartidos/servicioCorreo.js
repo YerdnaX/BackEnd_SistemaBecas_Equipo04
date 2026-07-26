@@ -1,13 +1,77 @@
 import nodemailer from 'nodemailer';
+import { google } from 'googleapis';
 import { configuracion } from '../configuracion/variablesEntorno.js';
 import { obtenerPool, sql } from '../configuracion/baseDatos.js';
 
 let transportador = null;
+let clienteGmail = null;
+
+function correoGoogleConfigurado() {
+  return Boolean(
+    configuracion.googleCorreo.clientId
+    && configuracion.googleCorreo.clientSecret
+    && configuracion.googleCorreo.refreshToken
+    && configuracion.googleCorreo.usuario
+  );
+}
+
+function smtpConfigurado() {
+  return Boolean(configuracion.smtp.host);
+}
+
+function construirRawCorreo({ from, to, subject, html }) {
+  const lineas = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=UTF-8',
+    '',
+    html
+  ];
+  return Buffer.from(lineas.join('\n'))
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/g, '');
+}
+
+function obtenerClienteGmail() {
+  if (clienteGmail) return clienteGmail;
+
+  if (!correoGoogleConfigurado()) {
+    throw new Error('Google API no está configurado para envío de correo.');
+  }
+
+  const oauth2 = new google.auth.OAuth2(
+    configuracion.googleCorreo.clientId,
+    configuracion.googleCorreo.clientSecret,
+    configuracion.googleCorreo.redirectUri
+  );
+
+  oauth2.setCredentials({ refresh_token: configuracion.googleCorreo.refreshToken });
+  clienteGmail = google.gmail({ version: 'v1', auth: oauth2 });
+  return clienteGmail;
+}
+
+async function enviarConGoogleApi({ correoDestino, asunto, contenidoHtml }) {
+  const gmail = obtenerClienteGmail();
+  const raw = construirRawCorreo({
+    from: configuracion.smtp.remitente,
+    to: correoDestino,
+    subject: asunto,
+    html: contenidoHtml
+  });
+  await gmail.users.messages.send({
+    userId: configuracion.googleCorreo.usuario,
+    requestBody: { raw }
+  });
+}
 
 function obtenerTransportador() {
   if (transportador) return transportador;
 
-  if (configuracion.smtp.host) {
+  if (smtpConfigurado()) {
     transportador = nodemailer.createTransport({
       host: configuracion.smtp.host,
       port: configuracion.smtp.puerto,
@@ -19,14 +83,30 @@ function obtenerTransportador() {
     return transportador;
   }
 
-  if (configuracion.entorno === 'production') {
-    throw new Error('SMTP no está configurado. Defina SMTP_HOST antes de enviar correos en producción.');
-  }
-
   // Desarrollo sin SMTP configurado: transporte de prueba que no envía nada real,
   // solo registra el mensaje (jsonTransport). El registro en EnviosCorreo es real.
   transportador = nodemailer.createTransport({ jsonTransport: true });
   return transportador;
+}
+
+async function enviarCorreoProveedor({ correoDestino, asunto, contenidoHtml }) {
+  if (correoGoogleConfigurado()) {
+    await enviarConGoogleApi({ correoDestino, asunto, contenidoHtml });
+    return;
+  }
+
+  if (smtpConfigurado() || configuracion.entorno !== 'production') {
+    const transporte = obtenerTransportador();
+    await transporte.sendMail({
+      from: configuracion.smtp.remitente,
+      to: correoDestino,
+      subject: asunto,
+      html: contenidoHtml
+    });
+    return;
+  }
+
+  throw new Error('No hay proveedor de correo configurado. Defina GOOGLE_OAUTH_* o SMTP_* en producción.');
 }
 
 async function registrarEnvio({ idUsuario, correoDestino, asunto, tipoMensaje, contenidoHtml, estado, error }) {
@@ -64,13 +144,7 @@ async function actualizarEnvioTrasReintento(idEnvioCorreo, { estado, error }) {
 
 export async function enviarCorreo({ idUsuario = null, correoDestino, asunto, tipoMensaje, contenidoHtml }) {
   try {
-    const transporte = obtenerTransportador();
-    await transporte.sendMail({
-      from: configuracion.smtp.remitente,
-      to: correoDestino,
-      subject: asunto,
-      html: contenidoHtml
-    });
+    await enviarCorreoProveedor({ correoDestino, asunto, contenidoHtml });
     await registrarEnvio({ idUsuario, correoDestino, asunto, tipoMensaje, contenidoHtml, estado: 'ENVIADO' });
   } catch (error) {
     await registrarEnvio({
@@ -105,12 +179,10 @@ export async function reintentarEnviosFallidos(maximoIntentos = 3) {
   for (const envio of pendientes.recordset) {
     resultados.reintentados += 1;
     try {
-      const transporte = obtenerTransportador();
-      await transporte.sendMail({
-        from: configuracion.smtp.remitente,
-        to: envio.CorreoDestino,
-        subject: envio.Asunto,
-        html: envio.ContenidoHtml
+      await enviarCorreoProveedor({
+        correoDestino: envio.CorreoDestino,
+        asunto: envio.Asunto,
+        contenidoHtml: envio.ContenidoHtml
       });
       await actualizarEnvioTrasReintento(envio.IdEnvioCorreo, { estado: 'ENVIADO' });
       resultados.exitosos += 1;

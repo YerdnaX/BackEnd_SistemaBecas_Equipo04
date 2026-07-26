@@ -66,17 +66,24 @@ JWT_REFRESH_SECRET=<genere otro distinto>
 JWT_DURACION=15m
 JWT_REFRESH_DURACION=7d
 URL_FRONTEND=https://<dominio-del-frontend-en-plesk>
-SMTP_HOST=<host SMTP real, si ya está disponible>
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=<usuario SMTP>
-SMTP_PASSWORD=<contraseña SMTP>
 SMTP_FROM=SGBE CUC <no-responder@cuc.ac.cr>
+GOOGLE_OAUTH_CLIENT_ID=<client_id.apps.googleusercontent.com>
+GOOGLE_OAUTH_CLIENT_SECRET=<client_secret>
+GOOGLE_OAUTH_REFRESH_TOKEN=<refresh_token_oauth2>
+GOOGLE_OAUTH_REDIRECT_URI=https://developers.google.com/oauthplayground
+GOOGLE_OAUTH_USER=me
 TAMANO_MAXIMO_ARCHIVO_MB=8
 OTP_DURACION_MINUTOS=10
 OTP_INTENTOS_MAXIMOS=5
 TOKEN_ACTIVACION_HORAS=24
 TOKEN_RECUPERACION_HORAS=24
+
+# SMTP opcional (solo fallback)
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=
+SMTP_PASSWORD=
 ```
 
 `PORT` no se configura: Render lo inyecta automáticamente y el servidor ya lee `process.env.PORT`.
@@ -88,7 +95,52 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 ```
 Ejecútelo dos veces y use un valor para cada variable.
 
-Si `SMTP_HOST` todavía no está disponible, dejarlo vacío hará que el backend **rechace explícitamente** el envío de correos en producción (no simula un envío exitoso, por regla del proyecto) — el registro, la activación por correo, el 2FA y la recuperación de contraseña no funcionarán hasta configurarlo. Puede desplegar igual para probar el resto del sistema y completar el SMTP después.
+### 3.1 Obtener credenciales de Google API (Gmail) para 2FA
+
+1. Cree o elija un proyecto en Google Cloud Console.
+   - Abra https://console.cloud.google.com/.
+   - Menú de proyecto (arriba) → **New Project**.
+
+2. Configure la pantalla de consentimiento OAuth.
+   - API & Services → **OAuth consent screen**.
+   - Tipo recomendado para pruebas institucionales: **External**.
+   - Complete nombre de app, correo de soporte y correo del desarrollador.
+   - En **Scopes**, agregue `.../auth/gmail.send`.
+   - En **Test users**, agregue la cuenta Gmail remitente que usará el sistema.
+
+3. Habilite la API de Gmail.
+   - API & Services → **Library**.
+   - Busque **Gmail API** → **Enable**.
+
+4. Cree credenciales OAuth 2.0.
+   - API & Services → **Credentials** → **Create Credentials** → **OAuth client ID**.
+   - Tipo: **Web application**.
+   - Authorized redirect URI: `https://developers.google.com/oauthplayground`.
+   - Guarde `Client ID` y `Client Secret`.
+
+5. Obtenga el refresh token en OAuth Playground.
+   - Abra https://developers.google.com/oauthplayground.
+   - Ícono de engranaje (arriba derecha): active **Use your own OAuth credentials**.
+   - Pegue el `Client ID` y `Client Secret`.
+   - En el panel izquierdo, seleccione el scope `https://www.googleapis.com/auth/gmail.send`.
+   - Click **Authorize APIs** y acepte con el correo remitente.
+   - Click **Exchange authorization code for tokens**.
+   - Copie el `refresh_token`.
+
+6. Cargue valores en Render.
+   - `GOOGLE_OAUTH_CLIENT_ID` = Client ID.
+   - `GOOGLE_OAUTH_CLIENT_SECRET` = Client Secret.
+   - `GOOGLE_OAUTH_REFRESH_TOKEN` = refresh_token.
+   - `GOOGLE_OAUTH_REDIRECT_URI` = `https://developers.google.com/oauthplayground`.
+   - `GOOGLE_OAUTH_USER` = `me`.
+   - `SMTP_FROM` = remitente visible (por ejemplo `SGBE CUC <no-responder@cuc.ac.cr>`).
+
+7. Validación recomendada posterior al deploy.
+   - Inicie sesión con un usuario nuevo (creado después de la migración 2FA).
+   - Debe recibir código por correo y completar segundo paso de login.
+   - Revise `dbo.EnviosCorreo`: debe quedar en `ENVIADO`.
+
+Si las variables `GOOGLE_OAUTH_*` no están completas en producción, el backend rechazará el envío de correos y el inicio de sesión con 2FA no podrá completarse para usuarios nuevos.
 
 ## 4. Desplegar
 
@@ -105,6 +157,9 @@ Si `tiusr15pl_SGBE_CUC_Equipo04` todavía no tiene las tablas del sistema:
 cd BackEnd
 # Ejecute BackEnd/basedatos/crear_base_datos.sql contra el servidor con su cliente SQL preferido
 # (Azure Data Studio, SSMS, o sqlcmd -S tiusr15pl.cuc-carrera-ti.ac.cr -U Equipo04 -P "..." -i basedatos/crear_base_datos.sql)
+# Ejecute datos_prueba.sql para aplicar en una sola corrida los ajustes
+# idempotentes de Segmento 03 + 2FA y, opcionalmente, cargar cuentas de prueba:
+# sqlcmd -S tiusr15pl.cuc-carrera-ti.ac.cr -U Equipo04 -P "..." -i basedatos/datos_prueba.sql
 npm run verificar:conexion
 ADMIN_CORREO=admin@cuc.ac.cr ADMIN_CONTRASENA="Cambiar123!" npm run crear:administrador
 ```

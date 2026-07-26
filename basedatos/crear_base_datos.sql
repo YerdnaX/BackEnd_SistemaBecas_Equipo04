@@ -77,6 +77,7 @@ BEGIN
         Estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE_ACTIVACION'
             CHECK (Estado IN ('PENDIENTE_ACTIVACION','ACTIVO','BLOQUEADO','INACTIVO')),
         CorreoVerificado BIT NOT NULL DEFAULT 0,
+        RequiereDosFactores BIT NOT NULL DEFAULT 1,
         IntentosFallidos INT NOT NULL DEFAULT 0,
         Activo BIT NOT NULL DEFAULT 1,
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -84,6 +85,10 @@ BEGIN
     );
     CREATE INDEX IX_Usuarios_Estado ON dbo.Usuarios(Estado);
 END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Usuarios') AND name = 'RequiereDosFactores')
+    ALTER TABLE dbo.Usuarios ADD RequiereDosFactores BIT NOT NULL CONSTRAINT DF_Usuarios_RequiereDosFactores DEFAULT 1;
 GO
 
 IF OBJECT_ID(N'dbo.UsuariosRoles', N'U') IS NULL

@@ -33,6 +33,12 @@
    ```powershell
    $env:ADMIN_CORREO="admin@cuc.ac.cr"; $env:ADMIN_CONTRASENA="Cambiar123!"; node scripts/crearAdministrador.js
    ```
+6. Para dejar todo listo con Segmento 03 y 2FA en una sola corrida adicional, ejecute:
+    - `BackEnd/basedatos/datos_prueba.sql`
+    - Además de los datos de prueba, este script aplica ajustes idempotentes de Segmento 03 (estados, permisos, plantillas, parámetros y FAQs).
+    - También configura `Usuarios.RequiereDosFactores` con esta regla:
+       - usuarios existentes actuales: `RequiereDosFactores = 0` (no se les pedirá 2FA);
+       - usuarios nuevos: `RequiereDosFactores = 1` por defecto (sí se les pedirá 2FA).
 
 ## Servidor confirmado
 
@@ -44,3 +50,4 @@
 - Borrado lógico con `Activo BIT` en catálogos con historial (p. ej. `TiposBeca`, `Roles`).
 - Archivos cargados por los usuarios se guardan en `Archivos.Contenido VARBINARY(MAX)` porque Render no garantiza disco persistente; ver `documentacion/DECISIONES_SEGMENTO_01.md` sección 4.
 - Solo las tablas de los dominios del Segmento 01 (identidad, tipos de beca, convocatorias, solicitudes, expedientes, evaluación, comité, notificaciones) tienen API y pantallas funcionales en esta entrega. El resto (formalización, activación financiera, seguimiento, renovación, apelación, suspensión, cierre, chatbot) queda creado para segmentos futuros.
+- Para despliegues en Render, el envío de correos de 2FA usa Google API (OAuth2 HTTPS) como proveedor recomendado, porque Render puede bloquear SMTP saliente en algunos escenarios; ver `BackEnd/RENDER.md`.
