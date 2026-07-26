@@ -234,23 +234,62 @@ export async function cerrarSesion(refreshToken) {
 export async function recuperarContrasena(correo) {
   const usuario = correo ? await datosAuth.obtenerUsuarioPorCorreo(correo) : null;
   if (usuario && usuario.Estado !== 'INACTIVO') {
-    const token = generarTokenAleatorio();
-    const tokenHash = hashearValor(token);
-    await datosAuth.crearTokenRecuperacion(usuario.IdUsuario, tokenHash, sumarHoras(configuracion.autenticacion.tokenRecuperacionHoras));
+    await datosAuth.invalidarTokensRecuperacionUsuario(usuario.IdUsuario);
 
-    const enlace = `${configuracion.urlFrontend}/restablecer-contrasena?token=${token}`;
+    const codigoRecuperacion = generarCodigoOtp();
+    const tokenHash = hashearValor(codigoRecuperacion);
+    await datosAuth.crearTokenRecuperacion(
+      usuario.IdUsuario,
+      tokenHash,
+      sumarHoras(configuracion.autenticacion.tokenRecuperacionHoras)
+    );
+
     await enviarCorreo({
       idUsuario: usuario.IdUsuario,
       correoDestino: usuario.Correo,
       asunto: 'Recuperación de contraseña - SGBE CUC',
       tipoMensaje: 'RECUPERACION_CONTRASENA',
-      contenidoHtml: `<p>Para restablecer su contraseña ingrese al siguiente enlace (vigente ${configuracion.autenticacion.tokenRecuperacionHoras} horas):</p><p><a href="${enlace}">${enlace}</a></p>`
+      contenidoHtml: `<p>Su código de recuperación es:</p><p style="font-size: 24px;"><strong>${codigoRecuperacion}</strong></p><p>Este código vence en ${configuracion.autenticacion.tokenRecuperacionHoras} horas.</p><p>Use este código en la pantalla de recuperación de contraseña.</p>`
     });
   }
   // Respuesta identica exista o no la cuenta.
 }
 
-export async function restablecerContrasena({ token, contrasena, confirmacion }) {
+export async function verificarCodigoRecuperacion({ correo, codigo }) {
+  if (!correoEsValido(correo)) {
+    throw errorValidacion('El correo no es válido.', [{ campo: 'correo', mensaje: 'El correo no es válido.' }]);
+  }
+  if (!codigo || !/^\d{6}$/.test(String(codigo))) {
+    throw errorValidacion('El código debe tener 6 dígitos.', [{ campo: 'codigo', mensaje: 'El código debe tener 6 dígitos.' }]);
+  }
+
+  const usuario = await datosAuth.obtenerUsuarioPorCorreo(correo);
+  if (!usuario || usuario.Estado === 'INACTIVO') {
+    throw errorNoAutorizado('No fue posible validar el código de recuperación.');
+  }
+
+  const registro = await datosAuth.obtenerTokenRecuperacionVigentePorUsuario(
+    hashearValor(String(codigo)),
+    usuario.IdUsuario
+  );
+  if (!registro) {
+    throw errorNoAutorizado('El código de recuperación es incorrecto o venció.');
+  }
+
+  return {
+    validado: true,
+    correo: ocultarCorreo(usuario.Correo),
+    expiraEnHoras: configuracion.autenticacion.tokenRecuperacionHoras
+  };
+}
+
+export async function restablecerContrasena({ correo, codigo, contrasena, confirmacion }) {
+  if (!correoEsValido(correo)) {
+    throw errorValidacion('El correo no es válido.', [{ campo: 'correo', mensaje: 'El correo no es válido.' }]);
+  }
+  if (!codigo || !/^\d{6}$/.test(String(codigo))) {
+    throw errorValidacion('El código debe tener 6 dígitos.', [{ campo: 'codigo', mensaje: 'El código debe tener 6 dígitos.' }]);
+  }
   if (!contrasenaEsSegura(contrasena)) {
     throw errorValidacion('La contraseña no cumple los requisitos de seguridad.', [
       { campo: 'contrasena', mensaje: 'Debe tener al menos 8 caracteres, una mayúscula, un número y un carácter especial.' }
@@ -260,14 +299,21 @@ export async function restablecerContrasena({ token, contrasena, confirmacion })
     throw errorValidacion('Las contraseñas no coinciden.', [{ campo: 'confirmacion', mensaje: 'Las contraseñas no coinciden.' }]);
   }
 
-  const tokenHash = hashearValor(token || '');
-  const registro = await datosAuth.obtenerTokenRecuperacionVigente(tokenHash);
-  if (!registro) throw errorValidacion('El enlace de recuperación no es válido o venció.');
+  const usuario = await datosAuth.obtenerUsuarioPorCorreo(correo);
+  if (!usuario || usuario.Estado === 'INACTIVO') {
+    throw errorNoAutorizado('No fue posible validar el código de recuperación.');
+  }
+
+  const registro = await datosAuth.obtenerTokenRecuperacionVigentePorUsuario(
+    hashearValor(String(codigo)),
+    usuario.IdUsuario
+  );
+  if (!registro) throw errorValidacion('El código de recuperación no es válido o venció.');
 
   const contrasenaHash = await bcrypt.hash(contrasena, RONDAS_BCRYPT);
-  await datosAuth.actualizarContrasena(registro.IdUsuario, contrasenaHash);
+  await datosAuth.actualizarContrasena(usuario.IdUsuario, contrasenaHash);
   await datosAuth.marcarTokenRecuperacionUsado(registro.IdTokenRecuperacion);
-  await datosAuth.revocarSesionesUsuario(registro.IdUsuario);
+  await datosAuth.revocarSesionesUsuario(usuario.IdUsuario);
 }
 
 export async function obtenerUsuarioActual(idUsuario) {

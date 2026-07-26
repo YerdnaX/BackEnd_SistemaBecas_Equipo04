@@ -45,7 +45,12 @@ export const cerrarSesion = asincrono(async (req, res) => {
 
 export const recuperarContrasena = asincrono(async (req, res) => {
   await servicio.recuperarContrasena(req.body.correo);
-  enviarExito(res, { mensaje: 'Si el correo está registrado, se enviaron instrucciones de recuperación.' });
+  enviarExito(res, { mensaje: 'Si el correo está registrado, se envió un código de recuperación.' });
+});
+
+export const verificarCodigoRecuperacion = asincrono(async (req, res) => {
+  const resultado = await servicio.verificarCodigoRecuperacion(req.body);
+  enviarExito(res, { mensaje: 'Código de recuperación validado.', datos: resultado });
 });
 
 export const restablecerContrasena = asincrono(async (req, res) => {

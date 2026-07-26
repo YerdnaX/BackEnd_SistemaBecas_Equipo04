@@ -11,6 +11,7 @@ rutas.post('/verificar-dos-factores', limitadorAutenticacion, controlador.verifi
 rutas.post('/renovar-sesion', controlador.renovarSesion);
 rutas.post('/cerrar-sesion', controlador.cerrarSesion);
 rutas.post('/recuperar-contrasena', limitadorAutenticacion, controlador.recuperarContrasena);
+rutas.post('/verificar-codigo-recuperacion', limitadorAutenticacion, controlador.verificarCodigoRecuperacion);
 rutas.post('/restablecer-contrasena', limitadorAutenticacion, controlador.restablecerContrasena);
 
 export default rutas;

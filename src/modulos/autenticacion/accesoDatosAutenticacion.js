@@ -229,6 +229,17 @@ export async function crearTokenRecuperacion(idUsuario, tokenHash, fechaVencimie
     `);
 }
 
+export async function invalidarTokensRecuperacionUsuario(idUsuario) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .query(`
+      UPDATE dbo.TokensRecuperacion
+      SET FechaUso = SYSUTCDATETIME()
+      WHERE IdUsuario = @idUsuario AND FechaUso IS NULL
+    `);
+}
+
 export async function obtenerTokenRecuperacionVigente(tokenHash) {
   const pool = await obtenerPool();
   const resultado = await pool.request()
@@ -236,6 +247,22 @@ export async function obtenerTokenRecuperacionVigente(tokenHash) {
     .query(`
       SELECT TOP 1 * FROM dbo.TokensRecuperacion
       WHERE TokenHash = @tokenHash AND FechaUso IS NULL AND FechaVencimiento > SYSUTCDATETIME()
+      ORDER BY IdTokenRecuperacion DESC
+    `);
+  return resultado.recordset[0] || null;
+}
+
+export async function obtenerTokenRecuperacionVigentePorUsuario(tokenHash, idUsuario) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('tokenHash', sql.NVarChar(255), tokenHash)
+    .input('idUsuario', sql.Int, idUsuario)
+    .query(`
+      SELECT TOP 1 * FROM dbo.TokensRecuperacion
+      WHERE IdUsuario = @idUsuario
+        AND TokenHash = @tokenHash
+        AND FechaUso IS NULL
+        AND FechaVencimiento > SYSUTCDATETIME()
       ORDER BY IdTokenRecuperacion DESC
     `);
   return resultado.recordset[0] || null;
