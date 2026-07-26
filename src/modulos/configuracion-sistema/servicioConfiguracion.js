@@ -13,8 +13,19 @@ import { reintentarEnviosFallidos } from '../../servicios-compartidos/servicioCo
 // configurados y permite editar el nombre visible del remitente, que
 // no es sensible y se guarda en ConfiguracionesSistema.
 export async function obtenerEstadoCorreo() {
+  const smtpConfigurado = Boolean(configuracion.smtp.host);
+  const googleConfigurado = Boolean(
+    configuracion.googleCorreo.clientId
+    && configuracion.googleCorreo.clientSecret
+    && configuracion.googleCorreo.refreshToken
+    && configuracion.googleCorreo.usuario
+  );
+
   return {
-    smtpConfigurado: Boolean(configuracion.smtp.host),
+    smtpConfigurado,
+    googleConfigurado,
+    correoConfigurado: smtpConfigurado || googleConfigurado,
+    proveedorCorreo: googleConfigurado ? 'GOOGLE_API' : smtpConfigurado ? 'SMTP' : 'NINGUNO',
     remitente: configuracion.smtp.remitente,
     nombreRemitente: await datos.obtenerParametroPorClave('CORREO_REMITENTE_NOMBRE').then((p) => p?.Valor || 'SGBE CUC')
   };
