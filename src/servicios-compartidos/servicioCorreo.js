@@ -5,6 +5,7 @@ import { obtenerPool, sql } from '../configuracion/baseDatos.js';
 
 let transportador = null;
 let clienteGmail = null;
+let transportadorMIME = null;
 
 function correoGoogleConfigurado() {
   return Boolean(
@@ -19,17 +20,49 @@ function smtpConfigurado() {
   return Boolean(configuracion.smtp.host);
 }
 
-function construirRawCorreo({ from, to, subject, html }) {
-  const lineas = [
-    `From: ${from}`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=UTF-8',
-    '',
-    html
-  ];
-  return Buffer.from(lineas.join('\n'))
+function repararMojibake(texto) {
+  let valor = String(texto || '');
+  for (let i = 0; i < 3; i += 1) {
+    if (!/[ÃÂ]/.test(valor)) break;
+    const reparado = Buffer.from(valor, 'latin1').toString('utf8');
+    if (reparado === valor) break;
+    valor = reparado;
+  }
+  return valor;
+}
+
+function normalizarAsunto(asunto) {
+  const reparado = repararMojibake(asunto);
+  // Fallback conservador para evitar problemas de encabezado en clientes
+  // que no respetan completamente la codificación RFC del Subject.
+  return reparado
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+function obtenerTransportadorMIME() {
+  if (transportadorMIME) return transportadorMIME;
+  // Genera un mensaje MIME en memoria (sin envío de red) con codificación correcta.
+  transportadorMIME = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: 'windows'
+  });
+  return transportadorMIME;
+}
+
+async function construirRawCorreo({ from, to, subject, html }) {
+  const compositor = obtenerTransportadorMIME();
+  const asuntoSeguro = normalizarAsunto(subject);
+  const resultado = await compositor.sendMail({
+    from,
+    to,
+    subject: asuntoSeguro,
+    html,
+    text: 'Este mensaje requiere un cliente de correo con soporte HTML.'
+  });
+
+  return resultado.message
     .toString('base64')
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -56,7 +89,7 @@ function obtenerClienteGmail() {
 
 async function enviarConGoogleApi({ correoDestino, asunto, contenidoHtml }) {
   const gmail = obtenerClienteGmail();
-  const raw = construirRawCorreo({
+  const raw = await construirRawCorreo({
     from: configuracion.smtp.remitente,
     to: correoDestino,
     subject: asunto,
