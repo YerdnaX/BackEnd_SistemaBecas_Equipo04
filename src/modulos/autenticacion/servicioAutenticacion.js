@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { configuracion } from '../../configuracion/variablesEntorno.js';
 import { errorValidacion, errorNoAutorizado, errorConflicto } from '../../utilidades/errorAplicacion.js';
 import { correoEsValido, contrasenaEsSegura } from '../../utilidades/validaciones.js';
-import { generarTokenAleatorio, generarCodigoOtp, hashearValor } from '../../utilidades/tokens.js';
+import { generarTokenAleatorio, hashearValor } from '../../utilidades/tokens.js';
 import { enviarCorreo } from '../../servicios-compartidos/servicioCorreo.js';
 import * as datosAuth from './accesoDatosAutenticacion.js';
 
@@ -11,10 +11,6 @@ const RONDAS_BCRYPT = 10;
 
 function sumarHoras(horas) {
   return new Date(Date.now() + horas * 60 * 60 * 1000);
-}
-
-function sumarMinutos(minutos) {
-  return new Date(Date.now() + minutos * 60 * 1000);
 }
 
 async function generarTokensSesion(usuario, contexto) {
@@ -62,45 +58,12 @@ export async function registrarUsuario({ correo, contrasena, confirmacion, nombr
   const contrasenaHash = await bcrypt.hash(contrasena, RONDAS_BCRYPT);
   const idUsuario = await datosAuth.crearUsuario({ correo, contrasenaHash, nombre, primerApellido, segundoApellido });
 
-  await enviarTokenActivacion(idUsuario, correo);
+  await datosAuth.activarUsuario(idUsuario);
 
   return { idUsuario };
 }
 
-async function enviarTokenActivacion(idUsuario, correo) {
-  const token = generarTokenAleatorio();
-  const tokenHash = hashearValor(token);
-  await datosAuth.crearTokenActivacion(idUsuario, tokenHash, sumarHoras(configuracion.autenticacion.tokenActivacionHoras));
-
-  const enlace = `${configuracion.urlFrontend}/activar-cuenta?token=${token}`;
-  await enviarCorreo({
-    idUsuario,
-    correoDestino: correo,
-    asunto: 'Activa tu cuenta - SGBE CUC',
-    tipoMensaje: 'ACTIVACION_CUENTA',
-    contenidoHtml: `<p>Para activar tu cuenta ingresa al siguiente enlace (vigente ${configuracion.autenticacion.tokenActivacionHoras} horas):</p><p><a href="${enlace}">${enlace}</a></p>`
-  });
-}
-
-export async function activarCuenta(token) {
-  if (!token) throw errorValidacion('El token de activación es obligatorio.');
-  const tokenHash = hashearValor(token);
-  const registro = await datosAuth.obtenerTokenActivacionVigente(tokenHash);
-  if (!registro) throw errorValidacion('El enlace de activación no es válido o venció.');
-
-  await datosAuth.activarUsuario(registro.IdUsuario);
-  await datosAuth.marcarTokenActivacionUsado(registro.IdTokenActivacion);
-}
-
-export async function reenviarActivacion(correo) {
-  const usuario = await datosAuth.obtenerUsuarioPorCorreo(correo);
-  if (usuario && usuario.Estado === 'PENDIENTE_ACTIVACION') {
-    await enviarTokenActivacion(usuario.IdUsuario, usuario.Correo);
-  }
-  // Respuesta identica exista o no la cuenta, para no revelar informacion sensible.
-}
-
-export async function iniciarSesion({ correo, contrasena }) {
+export async function iniciarSesion({ correo, contrasena }, contexto) {
   const usuario = correo ? await datosAuth.obtenerUsuarioPorCorreo(correo) : null;
   const contrasenaValida = usuario ? await bcrypt.compare(contrasena || '', usuario.ContrasenaHash) : false;
 
@@ -120,51 +83,8 @@ export async function iniciarSesion({ correo, contrasena }) {
   }
 
   await datosAuth.resetearIntentosFallidos(usuario.IdUsuario);
-  await enviarCodigoDosFactores(usuario);
 
-  return { correo: usuario.Correo };
-}
-
-async function enviarCodigoDosFactores(usuario) {
-  const codigo = generarCodigoOtp();
-  const codigoHash = hashearValor(codigo);
-  await datosAuth.crearRetoDosFactores(usuario.IdUsuario, codigoHash, sumarMinutos(configuracion.autenticacion.otpDuracionMinutos));
-
-  await enviarCorreo({
-    idUsuario: usuario.IdUsuario,
-    correoDestino: usuario.Correo,
-    asunto: 'Código de verificación - SGBE CUC',
-    tipoMensaje: 'VERIFICACION_2FA',
-    contenidoHtml: `<p>Su código de verificación es <strong>${codigo}</strong>. Vence en ${configuracion.autenticacion.otpDuracionMinutos} minutos.</p>`
-  });
-}
-
-export async function verificarDosFactores({ correo, codigo }, contexto) {
-  const usuario = correo ? await datosAuth.obtenerUsuarioPorCorreo(correo) : null;
-  if (!usuario) throw errorNoAutorizado('No fue posible verificar el código.');
-
-  const reto = await datosAuth.obtenerRetoVigente(usuario.IdUsuario);
-  if (!reto) throw errorConflicto('El código venció. Solicite uno nuevo.');
-
-  if (reto.Intentos >= configuracion.autenticacion.otpIntentosMaximos) {
-    throw errorConflicto('Se superó el número máximo de intentos. Solicite un nuevo código.');
-  }
-
-  const codigoHash = hashearValor(String(codigo || ''));
-  if (codigoHash !== reto.CodigoHash) {
-    await datosAuth.incrementarIntentoReto(reto.IdReto);
-    throw errorNoAutorizado('El código ingresado no es correcto.');
-  }
-
-  await datosAuth.marcarRetoUsado(reto.IdReto);
   return generarTokensSesion(usuario, contexto);
-}
-
-export async function reenviarDosFactores(correo) {
-  const usuario = correo ? await datosAuth.obtenerUsuarioPorCorreo(correo) : null;
-  if (usuario && usuario.Estado === 'ACTIVO') {
-    await enviarCodigoDosFactores(usuario);
-  }
 }
 
 export async function renovarSesion(refreshToken) {

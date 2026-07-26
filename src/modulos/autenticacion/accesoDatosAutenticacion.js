@@ -113,39 +113,6 @@ export async function activarUsuario(idUsuario) {
     `);
 }
 
-// --- Tokens de activacion ---
-
-export async function crearTokenActivacion(idUsuario, tokenHash, fechaVencimiento) {
-  const pool = await obtenerPool();
-  await pool.request()
-    .input('idUsuario', sql.Int, idUsuario)
-    .input('tokenHash', sql.NVarChar(255), tokenHash)
-    .input('fechaVencimiento', sql.DateTime2, fechaVencimiento)
-    .query(`
-      INSERT INTO dbo.TokensActivacion (IdUsuario, TokenHash, FechaVencimiento)
-      VALUES (@idUsuario, @tokenHash, @fechaVencimiento)
-    `);
-}
-
-export async function obtenerTokenActivacionVigente(tokenHash) {
-  const pool = await obtenerPool();
-  const resultado = await pool.request()
-    .input('tokenHash', sql.NVarChar(255), tokenHash)
-    .query(`
-      SELECT TOP 1 * FROM dbo.TokensActivacion
-      WHERE TokenHash = @tokenHash AND FechaUso IS NULL AND FechaVencimiento > SYSUTCDATETIME()
-      ORDER BY IdTokenActivacion DESC
-    `);
-  return resultado.recordset[0] || null;
-}
-
-export async function marcarTokenActivacionUsado(idTokenActivacion) {
-  const pool = await obtenerPool();
-  await pool.request()
-    .input('id', sql.Int, idTokenActivacion)
-    .query('UPDATE dbo.TokensActivacion SET FechaUso = SYSUTCDATETIME() WHERE IdTokenActivacion = @id');
-}
-
 // --- Tokens de recuperacion ---
 
 export async function crearTokenRecuperacion(idUsuario, tokenHash, fechaVencimiento) {
@@ -177,48 +144,6 @@ export async function marcarTokenRecuperacionUsado(idTokenRecuperacion) {
   await pool.request()
     .input('id', sql.Int, idTokenRecuperacion)
     .query('UPDATE dbo.TokensRecuperacion SET FechaUso = SYSUTCDATETIME() WHERE IdTokenRecuperacion = @id');
-}
-
-// --- Retos de dos factores ---
-
-export async function crearRetoDosFactores(idUsuario, codigoHash, fechaVencimiento) {
-  const pool = await obtenerPool();
-  const resultado = await pool.request()
-    .input('idUsuario', sql.Int, idUsuario)
-    .input('codigoHash', sql.NVarChar(255), codigoHash)
-    .input('fechaVencimiento', sql.DateTime2, fechaVencimiento)
-    .query(`
-      INSERT INTO dbo.RetosDosFactores (IdUsuario, CodigoHash, FechaVencimiento)
-      OUTPUT INSERTED.IdReto
-      VALUES (@idUsuario, @codigoHash, @fechaVencimiento)
-    `);
-  return resultado.recordset[0].IdReto;
-}
-
-export async function obtenerRetoVigente(idUsuario) {
-  const pool = await obtenerPool();
-  const resultado = await pool.request()
-    .input('idUsuario', sql.Int, idUsuario)
-    .query(`
-      SELECT TOP 1 * FROM dbo.RetosDosFactores
-      WHERE IdUsuario = @idUsuario AND FechaUso IS NULL AND FechaVencimiento > SYSUTCDATETIME()
-      ORDER BY IdReto DESC
-    `);
-  return resultado.recordset[0] || null;
-}
-
-export async function incrementarIntentoReto(idReto) {
-  const pool = await obtenerPool();
-  await pool.request()
-    .input('id', sql.Int, idReto)
-    .query('UPDATE dbo.RetosDosFactores SET Intentos = Intentos + 1 WHERE IdReto = @id');
-}
-
-export async function marcarRetoUsado(idReto) {
-  const pool = await obtenerPool();
-  await pool.request()
-    .input('id', sql.Int, idReto)
-    .query('UPDATE dbo.RetosDosFactores SET FechaUso = SYSUTCDATETIME() WHERE IdReto = @id');
 }
 
 // --- Sesiones (refresh token) ---
