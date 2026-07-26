@@ -15,6 +15,12 @@ import rutasSolicitudes from './modulos/solicitudes/rutasSolicitudes.js';
 import rutasExpedientes from './modulos/expedientes/rutasExpedientes.js';
 import rutasComite from './modulos/comite/rutasComite.js';
 import rutasNotificaciones from './modulos/notificaciones/rutasNotificaciones.js';
+import rutasApelaciones from './modulos/apelaciones/rutasApelaciones.js';
+import rutasDisciplinario from './modulos/disciplinario/rutasDisciplinario.js';
+import rutasCierre from './modulos/cierre/rutasCierre.js';
+import rutasConfiguracion from './modulos/configuracion-sistema/rutasConfiguracion.js';
+import rutasSeguridad from './modulos/seguridad/rutasSeguridad.js';
+import rutasChatbot from './modulos/chatbot/rutasChatbot.js';
 
 export function crearAplicacion() {
   const app = express();
@@ -52,6 +58,12 @@ export function crearAplicacion() {
   enrutadorV1.use('/expedientes', rutasExpedientes);
   enrutadorV1.use('/comite', rutasComite);
   enrutadorV1.use('/notificaciones', rutasNotificaciones);
+  enrutadorV1.use('/apelaciones', rutasApelaciones);
+  enrutadorV1.use('/disciplinario', rutasDisciplinario);
+  enrutadorV1.use('/expedientes', rutasCierre);
+  enrutadorV1.use('/configuracion', rutasConfiguracion);
+  enrutadorV1.use('/seguridad', rutasSeguridad);
+  enrutadorV1.use('/chatbot', rutasChatbot);
 
   app.use('/api/v1', enrutadorV1);
 
