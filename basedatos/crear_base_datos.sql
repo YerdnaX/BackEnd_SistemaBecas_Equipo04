@@ -161,21 +161,6 @@ BEGIN
 END
 GO
 
-IF OBJECT_ID(N'dbo.TokensCambioCorreo', N'U') IS NULL
-BEGIN
-    CREATE TABLE dbo.TokensCambioCorreo (
-        IdTokenCambioCorreo INT IDENTITY(1,1) PRIMARY KEY,
-        IdUsuario INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
-        CorreoNuevo NVARCHAR(150) NOT NULL,
-        TokenHash NVARCHAR(255) NOT NULL,
-        FechaVencimiento DATETIME2 NOT NULL,
-        FechaUso DATETIME2 NULL,
-        FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
-    );
-    CREATE INDEX IX_TokensCambioCorreo_Usuario ON dbo.TokensCambioCorreo(IdUsuario);
-END
-GO
-
 IF OBJECT_ID(N'dbo.RetosDosFactores', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.RetosDosFactores (

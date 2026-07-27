@@ -17,17 +17,4 @@ rutas.put('/actual/contrasena', requiereSesion, asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Contraseña actualizada correctamente. Inicie sesión nuevamente.' });
 }));
 
-rutas.post('/actual/correo/solicitud', requiereSesion, asincrono(async (req, res) => {
-  const resultado = await servicioUsuarios.solicitarCambioCorreo(req.usuario.idUsuario, req.body);
-  enviarExito(res, {
-    mensaje: 'Se envió un código de verificación al nuevo correo.',
-    datos: resultado
-  });
-}));
-
-rutas.post('/actual/correo/verificar', requiereSesion, asincrono(async (req, res) => {
-  const resultado = await servicioUsuarios.verificarCambioCorreo(req.usuario.idUsuario, req.body);
-  enviarExito(res, { mensaje: 'Correo actualizado correctamente.', datos: resultado });
-}));
-
 export default rutas;
