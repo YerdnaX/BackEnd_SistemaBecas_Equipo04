@@ -77,6 +77,7 @@ BEGIN
         Estado VARCHAR(30) NOT NULL DEFAULT 'PENDIENTE_ACTIVACION'
             CHECK (Estado IN ('PENDIENTE_ACTIVACION','ACTIVO','BLOQUEADO','INACTIVO')),
         CorreoVerificado BIT NOT NULL DEFAULT 0,
+        RequiereDosFactores BIT NOT NULL DEFAULT 1,
         IntentosFallidos INT NOT NULL DEFAULT 0,
         Activo BIT NOT NULL DEFAULT 1,
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -84,6 +85,10 @@ BEGIN
     );
     CREATE INDEX IX_Usuarios_Estado ON dbo.Usuarios(Estado);
 END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Usuarios') AND name = 'RequiereDosFactores')
+    ALTER TABLE dbo.Usuarios ADD RequiereDosFactores BIT NOT NULL CONSTRAINT DF_Usuarios_RequiereDosFactores DEFAULT 1;
 GO
 
 IF OBJECT_ID(N'dbo.UsuariosRoles', N'U') IS NULL
@@ -1110,7 +1115,8 @@ BEGIN
         DatosActualizados NVARCHAR(MAX) NULL,
         FechaSolicitud DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         FechaResolucion DATETIME2 NULL,
-        IdResueltoPor INT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario)
+        IdResueltoPor INT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
+        CONSTRAINT UQ_RenovacionesBeca_BecaPeriodo UNIQUE (IdBecaActiva, Periodo)
     );
 END
 GO
@@ -1429,7 +1435,7 @@ WHERE
       (r.Codigo = 'BECADO' AND p.Codigo IN ('BECADO_VER_PROPIO','BECADO_EDITAR_PROPIO','CONSULTA_CREAR_PROPIA',
           'JUSTIFICACION_CREAR_PROPIA','RENOVACION_CREAR_PROPIA')) OR
       (r.Codigo = 'TRABAJADORA_SOCIAL' AND p.Codigo IN ('VISITA_GESTIONAR','CONSULTA_GESTIONAR',
-          'SEGUIMIENTO_GESTIONAR','JUSTIFICACION_RESOLVER','RENOVACION_RESOLVER','REPORTE_VER')) OR
+          'NOTICIA_GESTIONAR','SEGUIMIENTO_GESTIONAR','JUSTIFICACION_RESOLVER','RENOVACION_RESOLVER','REPORTE_VER')) OR
       (r.Codigo = 'FINANZAS' AND p.Codigo = 'ACTIVACION_FINANCIERA_GESTIONAR') OR
       (r.Codigo = 'REGISTRO_ACADEMICO' AND p.Codigo = 'VALIDACION_ACADEMICA_GESTIONAR') OR
       (r.Codigo = 'COMITE_BECAS' AND p.Codigo IN ('REPORTE_VER','ACTA_VER')) OR
@@ -1500,6 +1506,29 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'PROMEDIO_
     INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('PROMEDIO_MINIMO_PERMANENCIA', '70', 'Promedio minimo provisional para permanencia y renovacion', 'NUMERO');
 IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'CREDITOS_MINIMOS_PERMANENCIA')
     INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('CREDITOS_MINIMOS_PERMANENCIA', '9', 'Creditos minimos provisionales por periodo', 'NUMERO');
+
+INSERT INTO dbo.PlantillasMensajes (Codigo, Asunto, Contenido)
+SELECT v.Codigo, v.Asunto, v.Contenido
+FROM (VALUES
+    ('FORMALIZACION_COMPLETADA', N'Formalizacion completada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('VALIDACION_ACADEMICA', N'Actualizacion de validacion academica', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('APLICACION_FINANCIERA', N'Aplicacion financiera registrada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('ACTIVACION_FINANCIERA_FALLIDA', N'Aplicacion financiera requiere revision', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('BENEFICIO_ACTIVO', N'Beneficio activo', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('VISITA_PROGRAMADA', N'Visita domiciliaria programada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('VISITA_MODIFICADA', N'Visita domiciliaria reprogramada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('VISITA_CANCELADA', N'Visita domiciliaria cancelada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('CONSULTA_RESPONDIDA', N'Nueva respuesta a su consulta', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('ALERTA_SEGUIMIENTO', N'Alerta de seguimiento', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('JUSTIFICACION_RESUELTA', N'Justificacion resuelta', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('RENOVACION_ABIERTA', N'Periodo de renovacion abierto', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('RENOVACION_ENVIADA', N'Renovacion enviada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('RENOVACION_RESUELTA', N'Renovacion resuelta', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('ESTADO_CUENTA', N'Estado de cuenta actualizado', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('ROLES_ACTUALIZADOS', N'Roles actualizados', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>'),
+    ('MEMBRESIA_COMITE', N'Membresia de comite actualizada', N'<h2>{{titulo}}</h2><p>{{mensaje}}</p>')
+) v(Codigo, Asunto, Contenido)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.PlantillasMensajes p WHERE p.Codigo = v.Codigo);
 
 -- La noticia publica de ejemplo (dato semilla) requiere un autor (Usuarios.IdAutor
 -- es NOT NULL) y por eso no puede insertarse aqui, antes de que exista un usuario.

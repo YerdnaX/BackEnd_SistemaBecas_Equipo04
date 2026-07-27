@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   evaluarPermanencia,
   filtrarActualizacionesExpediente,
+  normalizarEstadoConsulta,
   obtenerPaginacion,
   validarProgramacionVisita,
+  validarEnvioRenovacion,
   validarResultadoRenovacion
 } from '../src/utilidades/reglasSegmentoDos.js';
 
@@ -42,3 +44,38 @@ test('la paginacion limita resultados y normaliza valores', () => {
   });
 });
 
+test('una renovacion enviada exige declaracion y documento', () => {
+  assert.throws(
+    () => validarEnvioRenovacion({ estado: 'BORRADOR', enviar: true, datosActualizados: {}, cantidadDocumentos: 1 }),
+    /declaracion/
+  );
+  assert.throws(
+    () => validarEnvioRenovacion({ estado: 'BORRADOR', enviar: true, datosActualizados: { declaracion: true }, cantidadDocumentos: 0 }),
+    /documento/
+  );
+  assert.deepEqual(
+    validarEnvioRenovacion({ estado: 'BORRADOR', enviar: true, datosActualizados: { declaracion: true }, cantidadDocumentos: 1 }),
+    { idempotente: false }
+  );
+});
+
+test('reenviar una renovacion ya enviada es idempotente y no permite editarla', () => {
+  assert.deepEqual(
+    validarEnvioRenovacion({ estado: 'EN_REEVALUACION', enviar: true }),
+    { idempotente: true }
+  );
+  assert.throws(
+    () => validarEnvioRenovacion({ estado: 'EN_REEVALUACION', enviar: false }),
+    /borrador/
+  );
+  assert.throws(
+    () => validarEnvioRenovacion({ estado: 'RESUELTA', enviar: true }),
+    /borrador/
+  );
+});
+
+test('el estado visible EN_ATENCION se normaliza al estado persistido', () => {
+  assert.equal(normalizarEstadoConsulta('EN_ATENCION'), 'RESPONDIDA');
+  assert.equal(normalizarEstadoConsulta('CERRADA'), 'CERRADA');
+  assert.throws(() => normalizarEstadoConsulta('DESCONOCIDA'), /estado/);
+});

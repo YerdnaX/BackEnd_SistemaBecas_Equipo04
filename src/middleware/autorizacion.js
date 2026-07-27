@@ -10,6 +10,16 @@ export function requierePermiso(codigoPermiso) {
   };
 }
 
+export function requiereAlgunPermiso(...codigosPermiso) {
+  return (req, res, next) => {
+    const permisos = req.usuario?.permisos || [];
+    if (!codigosPermiso.some((permiso) => permisos.includes(permiso))) {
+      throw errorProhibido('No tiene permiso para realizar esta accion.');
+    }
+    next();
+  };
+}
+
 export function requiereRol(...codigosRol) {
   return (req, res, next) => {
     const roles = req.usuario?.roles || [];

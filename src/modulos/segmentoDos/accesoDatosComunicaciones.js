@@ -70,7 +70,7 @@ export async function obtenerVisita(idVisita) {
 
 export async function actualizarVisita(idVisita, idUsuarioResponsable, entrada) {
   const pool = await obtenerPool();
-  await pool.request()
+  const resultado = await pool.request()
     .input('id', sql.Int, idVisita)
     .input('idUsuario', sql.Int, idUsuarioResponsable)
     .input('fecha', sql.DateTime2, entrada.fechaProgramada)
@@ -82,18 +82,22 @@ export async function actualizarVisita(idVisita, idUsuarioResponsable, entrada) 
       SET IdResponsable = COALESCE(@IdEmpleado, IdResponsable), FechaProgramada = @fecha,
         Direccion = @direccion, Observaciones = @observaciones
       WHERE IdVisita = @id AND Estado = 'PROGRAMADA'
+      SELECT @@ROWCOUNT AS Filas;
     `);
+  return resultado.recordset[0]?.Filas > 0;
 }
 
 export async function cancelarVisita(idVisita, observacion) {
   const pool = await obtenerPool();
-  await pool.request().input('id', sql.Int, idVisita)
+  const resultado = await pool.request().input('id', sql.Int, idVisita)
     .input('observacion', sql.NVarChar(600), observacion || null)
     .query(`
       UPDATE dbo.VisitasDomiciliarias SET Estado = 'CANCELADA',
         Observaciones = COALESCE(@observacion, Observaciones)
       WHERE IdVisita = @id AND Estado = 'PROGRAMADA'
+      SELECT @@ROWCOUNT AS Filas;
     `);
+  return resultado.recordset[0]?.Filas > 0;
 }
 
 export async function registrarInformeVisita(idVisita, entrada) {
@@ -106,6 +110,14 @@ export async function registrarInformeVisita(idVisita, entrada) {
       .input('resultado', sql.NVarChar(60), entrada.resultado)
       .input('observaciones', sql.NVarChar(600), entrada.observaciones || null)
       .query(`
+        IF NOT EXISTS (
+          SELECT 1 FROM dbo.VisitasDomiciliarias
+          WHERE IdVisita = @idVisita AND Estado <> 'CANCELADA'
+        )
+        BEGIN
+          SELECT CAST(NULL AS INT) AS IdExpediente;
+          RETURN;
+        END;
         IF EXISTS (SELECT 1 FROM dbo.InformesVisita WHERE IdVisita = @idVisita)
           UPDATE dbo.InformesVisita SET Resultado = @resultado, Observaciones = @observaciones,
             FechaRegistro = SYSUTCDATETIME() WHERE IdVisita = @idVisita;
@@ -116,9 +128,9 @@ export async function registrarInformeVisita(idVisita, entrada) {
         SET Estado = 'REALIZADA', FechaRealizada = SYSUTCDATETIME()
         WHERE IdVisita = @idVisita AND Estado <> 'CANCELADA';
         SELECT v.IdExpediente FROM dbo.VisitasDomiciliarias v WHERE v.IdVisita = @idVisita;
-      `);
+    `);
     await transaccion.commit();
-    return resultado.recordset[0] || null;
+    return resultado.recordset[0]?.IdExpediente ? resultado.recordset[0] : null;
   } catch (error) {
     await transaccion.rollback();
     throw error;
@@ -205,7 +217,8 @@ export async function listarConsultasTrabajoSocial(filtros) {
     .input('desplazamiento', sql.Int, filtros.desplazamiento)
     .query(`
       SELECT c.*, CONCAT(u.Nombre, ' ', u.PrimerApellido) AS NombreUsuario, u.Correo,
-        CONCAT(ur.Nombre, ' ', ur.PrimerApellido) AS Responsable
+        CONCAT(ur.Nombre, ' ', ur.PrimerApellido) AS Responsable,
+        COUNT(*) OVER() AS Total
       FROM dbo.ConsultasUsuarios c
       JOIN dbo.Usuarios u ON u.IdUsuario = c.IdUsuario
       LEFT JOIN dbo.Empleados e ON e.IdEmpleado = c.IdResponsable
@@ -215,7 +228,9 @@ export async function listarConsultasTrabajoSocial(filtros) {
       ORDER BY c.FechaCreacion DESC
       OFFSET @desplazamiento ROWS FETCH NEXT @limite ROWS ONLY
     `);
-  return resultado.recordset;
+  const total = Number(resultado.recordset[0]?.Total || 0);
+  const items = resultado.recordset.map(({ Total, ...consulta }) => consulta);
+  return { items, total, pagina: filtros.pagina, limite: filtros.limite };
 }
 
 export async function asignarConsulta(idConsulta, idUsuarioResponsable) {
@@ -234,16 +249,18 @@ export async function asignarConsulta(idConsulta, idUsuarioResponsable) {
 
 export async function cambiarEstadoConsulta(idConsulta, estado) {
   const pool = await obtenerPool();
-  await pool.request().input('id', sql.Int, idConsulta).input('estado', sql.VarChar(20), estado).query(`
+  const resultado = await pool.request().input('id', sql.Int, idConsulta).input('estado', sql.VarChar(20), estado).query(`
     UPDATE dbo.ConsultasUsuarios SET Estado = @estado,
       FechaCierre = CASE WHEN @estado = 'CERRADA' THEN SYSUTCDATETIME() ELSE NULL END
     WHERE IdConsulta = @id
+    SELECT @@ROWCOUNT AS Filas;
   `);
+  return resultado.recordset[0]?.Filas > 0;
 }
 
 export async function listarNoticias(usuario) {
   const pool = await obtenerPool();
-  const esAdmin = usuario.roles.some((rol) => ['ADMINISTRADOR', 'COORDINADOR_BECAS'].includes(rol));
+  const esAdmin = usuario.permisos.includes('NOTICIA_GESTIONAR');
   const publico = usuario.roles.includes('BECADO') ? 'BECADO' : 'ASPIRANTE';
   const resultado = await pool.request()
     .input('esAdmin', sql.Bit, esAdmin)
@@ -281,7 +298,7 @@ export async function crearNoticia(idAutor, entrada) {
 
 export async function actualizarNoticia(idNoticia, entrada) {
   const pool = await obtenerPool();
-  await pool.request().input('id', sql.Int, idNoticia)
+  const resultado = await pool.request().input('id', sql.Int, idNoticia)
     .input('titulo', sql.NVarChar(200), entrada.titulo)
     .input('contenido', sql.NVarChar(sql.MAX), entrada.contenido)
     .input('publico', sql.VarChar(30), entrada.publicoDestino)
@@ -289,15 +306,19 @@ export async function actualizarNoticia(idNoticia, entrada) {
       UPDATE dbo.Noticias SET Titulo = @titulo, Contenido = @contenido,
         PublicoDestino = @publico, FechaActualizacion = SYSUTCDATETIME()
       WHERE IdNoticia = @id
+      SELECT @@ROWCOUNT AS Filas;
     `);
+  return resultado.recordset[0]?.Filas > 0;
 }
 
 export async function cambiarEstadoNoticia(idNoticia, estado) {
   const pool = await obtenerPool();
-  await pool.request().input('id', sql.Int, idNoticia).input('estado', sql.VarChar(20), estado).query(`
+  const resultado = await pool.request().input('id', sql.Int, idNoticia).input('estado', sql.VarChar(20), estado).query(`
     UPDATE dbo.Noticias SET Estado = @estado,
       FechaPublicacion = CASE WHEN @estado = 'PUBLICADA' THEN COALESCE(FechaPublicacion, SYSUTCDATETIME()) ELSE FechaPublicacion END,
       FechaActualizacion = SYSUTCDATETIME()
     WHERE IdNoticia = @id
+    SELECT @@ROWCOUNT AS Filas;
   `);
+  return resultado.recordset[0]?.Filas > 0;
 }

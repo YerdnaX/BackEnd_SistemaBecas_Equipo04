@@ -3,10 +3,12 @@ import { requiereSesion } from '../../middleware/autenticacion.js';
 import { requierePermiso } from '../../middleware/autorizacion.js';
 import { asincrono } from '../../utilidades/asincrono.js';
 import { enviarExito } from '../../utilidades/respuestas.js';
+import { parametroIdPositivo } from '../../utilidades/parametrosRuta.js';
 import * as servicio from './servicioComunicaciones.js';
 
 const rutas = Router();
 rutas.use(requiereSesion);
+rutas.param('id', parametroIdPositivo);
 
 rutas.get('/expedientes/:id/visitas', requierePermiso('VISITA_GESTIONAR'), asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.listarVisitas(Number(req.params.id)) });
@@ -72,4 +74,3 @@ rutas.patch('/noticias/:id/estado', requierePermiso('NOTICIA_GESTIONAR'), asincr
 }));
 
 export default rutas;
-

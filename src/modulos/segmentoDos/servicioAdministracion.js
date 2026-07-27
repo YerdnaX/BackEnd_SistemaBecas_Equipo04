@@ -2,8 +2,8 @@ import bcrypt from 'bcryptjs';
 import { errorNoEncontrado, errorValidacion } from '../../utilidades/errorAplicacion.js';
 import { contrasenaEsSegura, correoEsValido } from '../../utilidades/validaciones.js';
 import { obtenerPaginacion } from '../../utilidades/reglasSegmentoDos.js';
-import { guardarArchivo } from '../../servicios-compartidos/servicioArchivos.js';
-import { crearNotificacion } from '../../servicios-compartidos/servicioNotificaciones.js';
+import { guardarArchivo, obtenerArchivo } from '../../servicios-compartidos/servicioArchivos.js';
+import { crearNotificacionCompleta as crearNotificacion } from '../../servicios-compartidos/servicioNotificacionesEventos.js';
 import { crearPdfSimple } from '../../utilidades/crearPdfSimple.js';
 import * as datos from './accesoDatosAdministracion.js';
 
@@ -81,6 +81,9 @@ export async function crearRol(actor, entrada) {
 
 export async function actualizarRol(actor, id, entrada) {
   if (!entrada.nombre?.trim()) throw errorValidacion('El nombre es obligatorio.');
+  if (!(await datos.listarRoles()).some((rol) => rol.IdRol === id)) {
+    throw errorNoEncontrado('El rol no existe.');
+  }
   await datos.actualizarRol(id, entrada);
   await datos.registrarAuditoria(actor.idUsuario, 'ROLES', 'ACTUALIZAR', 'Roles', id);
 }
@@ -89,6 +92,9 @@ export const listarPermisos = () => datos.listarPermisos();
 
 export async function asignarPermisosRol(actor, id, idsPermisos) {
   if (!Array.isArray(idsPermisos)) throw errorValidacion('Debe enviar una lista de permisos.');
+  if (!(await datos.listarRoles()).some((rol) => rol.IdRol === id)) {
+    throw errorNoEncontrado('El rol no existe.');
+  }
   await datos.asignarPermisosRol(id, idsPermisos.map(Number));
   await datos.registrarAuditoria(actor.idUsuario, 'ROLES', 'ASIGNAR_PERMISOS', 'Roles', id, idsPermisos.join(','));
 }
@@ -160,10 +166,26 @@ export async function desactivarMiembro(actor, id) {
   }
 }
 
-export const obtenerIndicadores = (filtros) => datos.obtenerIndicadores(filtros);
-export const listarBecasReporte = (filtros) => datos.listarBecasReporte(filtros);
-export const obtenerResumenRenovaciones = () => datos.obtenerResumenRenovaciones();
-export const listarActas = () => datos.listarActas();
+export const obtenerIndicadores = (filtros) => datos.obtenerIndicadores(validarFiltrosReporte(filtros));
+export function validarFiltrosReporte(filtros = {}) {
+  if (filtros.idTipoBeca !== undefined && filtros.idTipoBeca !== '') {
+    const idTipo = Number(filtros.idTipoBeca);
+    if (!Number.isInteger(idTipo) || idTipo <= 0) {
+      throw errorValidacion('El tipo de beca seleccionado no es valido.');
+    }
+  }
+  if (filtros.estado && !['PENDIENTE_ACTIVACION', 'ACTIVA', 'SUSPENDIDA', 'FINALIZADA', 'CANCELADA'].includes(filtros.estado)) {
+    throw errorValidacion('El estado del reporte no es valido.');
+  }
+  return filtros;
+}
+export const listarBecasReporte = (filtros) => datos.listarBecasReporte(validarFiltrosReporte(filtros));
+export const listarFiltrosReporte = () => datos.listarFiltrosReporte();
+export const obtenerResumenRenovaciones = (filtros) => datos.obtenerResumenRenovaciones(filtros);
+export async function listarActas() {
+  await datos.sincronizarActasSesionesCerradas();
+  return datos.listarActas();
+}
 
 export async function obtenerActa(id) {
   const acta = await datos.obtenerActa(id);
@@ -173,6 +195,7 @@ export async function obtenerActa(id) {
 
 export async function generarDocumentoActa(id) {
   const acta = await obtenerActa(id);
+  if (acta.IdArchivo) return { idArchivo: acta.IdArchivo, formato: 'PDF', idempotente: true };
   const lineas = [
     'SGBE - CUC',
     `Acta ${acta.NumeroActa}`,
@@ -189,4 +212,12 @@ export async function generarDocumentoActa(id) {
   });
   await datos.asociarArchivoActa(id, idArchivo);
   return { idArchivo, formato: 'PDF' };
+}
+
+export async function obtenerArchivoActa(id) {
+  const acta = await obtenerActa(id);
+  if (!acta.IdArchivo) throw errorNoEncontrado('El acta aun no tiene un documento generado.');
+  const archivo = await obtenerArchivo(acta.IdArchivo);
+  if (!archivo) throw errorNoEncontrado('El documento asociado al acta no existe.');
+  return archivo;
 }

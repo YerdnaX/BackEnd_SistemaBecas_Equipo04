@@ -1,12 +1,22 @@
 import { Router } from 'express';
 import { requiereSesion } from '../../middleware/autenticacion.js';
-import { requierePermiso, requiereRol } from '../../middleware/autorizacion.js';
+import { requiereAlgunPermiso, requierePermiso } from '../../middleware/autorizacion.js';
 import { asincrono } from '../../utilidades/asincrono.js';
 import { enviarExito } from '../../utilidades/respuestas.js';
+import { parametroIdPositivo } from '../../utilidades/parametrosRuta.js';
 import * as servicio from './servicioBeneficios.js';
 
 const rutas = Router();
 rutas.use(requiereSesion);
+rutas.param('id', parametroIdPositivo);
+
+function serializarArchivo(archivo) {
+  return {
+    nombreOriginal: archivo.NombreOriginal,
+    tipoMime: archivo.TipoMime,
+    contenidoBase64: `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
+  };
+}
 
 rutas.get('/solicitudes/:id/formalizacion', requierePermiso('FORMALIZACION_GESTIONAR'), asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.obtenerFormalizacion(Number(req.params.id), req.usuario) });
@@ -20,6 +30,10 @@ rutas.post('/solicitudes/:id/formalizacion/aceptar', requierePermiso('FORMALIZAC
 rutas.get('/solicitudes/:id/convenio', requierePermiso('FORMALIZACION_GESTIONAR'), asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.obtenerConvenio(Number(req.params.id), req.usuario) });
 }));
+rutas.get('/solicitudes/:id/convenio/archivo', requierePermiso('FORMALIZACION_GESTIONAR'), asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoConvenio(Number(req.params.id), req.usuario);
+  enviarExito(res, { datos: serializarArchivo(archivo) });
+}));
 rutas.post('/solicitudes/:id/convenio/confirmar', requierePermiso('FORMALIZACION_GESTIONAR'), asincrono(async (req, res) => {
   enviarExito(res, {
     mensaje: 'Convenio confirmado.',
@@ -27,7 +41,10 @@ rutas.post('/solicitudes/:id/convenio/confirmar', requierePermiso('FORMALIZACION
   });
 }));
 
-rutas.get('/beneficios/:id', requiereRol('FINANZAS', 'REGISTRO_ACADEMICO', 'TRABAJADORA_SOCIAL', 'ADMINISTRADOR'), asincrono(async (req, res) => {
+rutas.get('/beneficios', requiereAlgunPermiso('ACTIVACION_FINANCIERA_GESTIONAR', 'VALIDACION_ACADEMICA_GESTIONAR', 'SEGUIMIENTO_GESTIONAR'), asincrono(async (req, res) => {
+  enviarExito(res, { datos: await servicio.listarBeneficios() });
+}));
+rutas.get('/beneficios/:id', requiereAlgunPermiso('ACTIVACION_FINANCIERA_GESTIONAR', 'VALIDACION_ACADEMICA_GESTIONAR', 'SEGUIMIENTO_GESTIONAR'), asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.obtenerBeneficio(Number(req.params.id)) });
 }));
 rutas.post('/beneficios/:id/validacion-academica', requierePermiso('VALIDACION_ACADEMICA_GESTIONAR'), asincrono(async (req, res) => {
@@ -54,4 +71,3 @@ rutas.get('/becado/expediente/historial', requierePermiso('BECADO_VER_PROPIO'), 
 }));
 
 export default rutas;
-

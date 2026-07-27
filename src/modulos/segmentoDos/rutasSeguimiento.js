@@ -4,10 +4,13 @@ import { requierePermiso } from '../../middleware/autorizacion.js';
 import { asincrono } from '../../utilidades/asincrono.js';
 import { enviarExito } from '../../utilidades/respuestas.js';
 import { decodificarArchivoBase64 } from '../../utilidades/archivosBase64.js';
+import { parametroIdPositivo } from '../../utilidades/parametrosRuta.js';
 import * as servicio from './servicioSeguimiento.js';
 
 const rutas = Router();
 rutas.use(requiereSesion);
+rutas.param('id', parametroIdPositivo);
+rutas.param('idDocumento', parametroIdPositivo);
 
 function prepararArchivo(cuerpo) {
   if (!cuerpo?.contenidoBase64) return null;
@@ -15,6 +18,14 @@ function prepararArchivo(cuerpo) {
     nombreOriginal: cuerpo.nombreArchivo,
     tipoMime: cuerpo.tipoMime,
     contenido: decodificarArchivoBase64(cuerpo.contenidoBase64)
+  };
+}
+
+function serializarArchivo(archivo) {
+  return {
+    nombreOriginal: archivo.NombreOriginal,
+    tipoMime: archivo.TipoMime,
+    contenidoBase64: `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
   };
 }
 
@@ -48,8 +59,15 @@ rutas.post('/becado/justificaciones', requierePermiso('JUSTIFICACION_CREAR_PROPI
     estadoHttp: 201
   });
 }));
+rutas.get('/trabajo-social/justificaciones', requierePermiso('JUSTIFICACION_RESOLVER'), asincrono(async (req, res) => {
+  enviarExito(res, { datos: await servicio.listarJustificacionesTrabajoSocial(req.query) });
+}));
 rutas.get('/justificaciones/:id', asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.obtenerJustificacion(Number(req.params.id), req.usuario) });
+}));
+rutas.get('/justificaciones/:id/archivo', asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoJustificacion(Number(req.params.id), req.usuario);
+  enviarExito(res, { datos: serializarArchivo(archivo) });
 }));
 rutas.put('/justificaciones/:id/resolver', requierePermiso('JUSTIFICACION_RESOLVER'), asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Justificacion resuelta.', datos: await servicio.resolverJustificacion(Number(req.params.id), req.usuario, req.body) });
@@ -74,8 +92,27 @@ rutas.post('/becado/renovaciones/:id/documentos', requierePermiso('RENOVACION_CR
     estadoHttp: 201
   });
 }));
+rutas.get('/becado/renovaciones/:id/documentos/:idDocumento/archivo', requierePermiso('RENOVACION_CREAR_PROPIA'), asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoRenovacion(
+    Number(req.params.id),
+    Number(req.params.idDocumento),
+    req.usuario
+  );
+  enviarExito(res, { datos: serializarArchivo(archivo) });
+}));
 rutas.get('/trabajo-social/renovaciones', requierePermiso('RENOVACION_RESOLVER'), asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.listarRenovacionesTrabajoSocial(req.query) });
+}));
+rutas.get('/trabajo-social/renovaciones/:id', requierePermiso('RENOVACION_RESOLVER'), asincrono(async (req, res) => {
+  enviarExito(res, { datos: await servicio.obtenerRenovacion(Number(req.params.id), req.usuario) });
+}));
+rutas.get('/trabajo-social/renovaciones/:id/documentos/:idDocumento/archivo', requierePermiso('RENOVACION_RESOLVER'), asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoRenovacion(
+    Number(req.params.id),
+    Number(req.params.idDocumento),
+    req.usuario
+  );
+  enviarExito(res, { datos: serializarArchivo(archivo) });
 }));
 rutas.put('/trabajo-social/renovaciones/:id/evaluar', requierePermiso('RENOVACION_RESOLVER'), asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Renovacion evaluada.', datos: await servicio.evaluarRenovacion(Number(req.params.id), req.usuario, req.body) });
@@ -85,4 +122,3 @@ rutas.put('/trabajo-social/renovaciones/:id/resolver', requierePermiso('RENOVACI
 }));
 
 export default rutas;
-

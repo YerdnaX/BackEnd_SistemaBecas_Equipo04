@@ -163,10 +163,16 @@ export async function obtenerConvenioSolicitud(idSolicitud, idUsuario) {
     .input('idSolicitud', sql.Int, idSolicitud)
     .input('idUsuario', sql.Int, idUsuario)
     .query(`
-      SELECT c.NumeroConvenio, c.Contenido, c.Firmado, c.FechaFirma, f.VersionCondiciones
+      SELECT c.NumeroConvenio, c.Contenido, c.Firmado, c.FechaFirma, f.VersionCondiciones,
+        r.NumeroResolucion, r.PorcentajeBeca, e.CodigoExpediente,
+        CONCAT(u.Nombre, ' ', u.PrimerApellido,
+          CASE WHEN u.SegundoApellido IS NULL OR LTRIM(RTRIM(u.SegundoApellido)) = ''
+            THEN '' ELSE CONCAT(' ', u.SegundoApellido) END) AS Estudiante
       FROM dbo.Solicitudes s
+      JOIN dbo.Usuarios u ON u.IdUsuario = s.IdUsuario
       JOIN dbo.Expedientes e ON e.IdSolicitud = s.IdSolicitud
       JOIN dbo.FormalizacionesBeca f ON f.IdExpediente = e.IdExpediente
+      JOIN dbo.ResolucionesBeca r ON r.IdResolucion = f.IdResolucion
       JOIN dbo.ConveniosBeca c ON c.IdFormalizacion = f.IdFormalizacion
       WHERE s.IdSolicitud = @idSolicitud AND s.IdUsuario = @idUsuario
     `);
@@ -197,6 +203,32 @@ export async function obtenerBeneficio(idBecaActiva) {
       WHERE b.IdBecaActiva = @id
     `);
   return resultado.recordset[0] || null;
+}
+
+export async function listarBeneficios() {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().query(`
+    SELECT b.IdBecaActiva, b.IdExpediente, b.Periodo, b.Porcentaje, b.Estado,
+      e.CodigoExpediente, CONCAT(u.Nombre, ' ', u.PrimerApellido) AS Estudiante,
+      da.NumeroEstudiante, da.Carrera, tb.Nombre AS TipoBeca,
+      va.Estado AS EstadoAcademico, af.Estado AS EstadoFinanciero
+    FROM dbo.BecasActivas b
+    JOIN dbo.Expedientes e ON e.IdExpediente = b.IdExpediente
+    JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
+    JOIN dbo.Usuarios u ON u.IdUsuario = s.IdUsuario
+    JOIN dbo.TiposBeca tb ON tb.IdTipoBeca = b.IdTipoBeca
+    LEFT JOIN dbo.DatosAcademicosSolicitud da ON da.IdSolicitud = s.IdSolicitud
+    OUTER APPLY (
+      SELECT TOP 1 v.Estado FROM dbo.ValidacionesAcademicas v
+      WHERE v.IdExpediente = e.IdExpediente ORDER BY v.IdValidacionAcademica DESC
+    ) va
+    OUTER APPLY (
+      SELECT TOP 1 a.Estado FROM dbo.ActivacionesFinancieras a
+      WHERE a.IdBecaActiva = b.IdBecaActiva ORDER BY a.IdActivacionFinanciera DESC
+    ) af
+    ORDER BY b.IdBecaActiva DESC
+  `);
+  return resultado.recordset;
 }
 
 export async function registrarValidacionAcademica(idBecaActiva, idUsuario, entrada) {
@@ -240,6 +272,12 @@ export async function aplicarFinancieramente(idBecaActiva, idUsuario, entrada) {
       DECLARE @IdEmpleado INT = (SELECT IdEmpleado FROM dbo.Empleados WHERE IdUsuario = @idUsuario AND Activo = 1);
       IF EXISTS (SELECT 1 FROM dbo.ActivacionesFinancieras WHERE IdBecaActiva = @idBeca AND Periodo = @periodo)
       BEGIN
+        UPDATE dbo.ActivacionesFinancieras
+        SET Porcentaje = @porcentaje, Monto = @monto, Referencia = @referencia,
+          IdEmpleadoFinanzas = COALESCE(@IdEmpleado, IdEmpleadoFinanzas),
+          Estado = @estado, DetalleError = @detalleError,
+          FechaRegistro = SYSUTCDATETIME(), FechaVerificacion = NULL
+        WHERE IdBecaActiva = @idBeca AND Periodo = @periodo AND Estado = 'RECHAZADA';
         SELECT IdActivacionFinanciera, Estado FROM dbo.ActivacionesFinancieras
         WHERE IdBecaActiva = @idBeca AND Periodo = @periodo;
       END
@@ -262,7 +300,8 @@ export async function verificarAplicacionFinanciera(idBecaActiva, idUsuario) {
     const consulta = await transaccion.request()
       .input('idBeca', sql.Int, idBecaActiva)
       .query(`
-        SELECT b.IdExpediente, b.Estado, af.IdActivacionFinanciera, af.Estado AS EstadoFinanciero,
+        SELECT TOP 1 b.IdExpediente, b.Estado, af.IdActivacionFinanciera,
+          af.Estado AS EstadoFinanciero, af.Periodo,
           af.Monto, af.Referencia, s.IdUsuario
         FROM dbo.BecasActivas b
         JOIN dbo.Expedientes e ON e.IdExpediente = b.IdExpediente
@@ -271,14 +310,19 @@ export async function verificarAplicacionFinanciera(idBecaActiva, idUsuario) {
         WHERE b.IdBecaActiva = @idBeca
           AND EXISTS (
             SELECT 1 FROM dbo.ValidacionesAcademicas va
-            WHERE va.IdExpediente = b.IdExpediente AND va.Estado = 'VALIDADA'
+            WHERE va.IdExpediente = b.IdExpediente AND va.Periodo = af.Periodo
+              AND va.Estado = 'VALIDADA'
           )
         ORDER BY af.IdActivacionFinanciera DESC
       `);
     const aplicacion = consulta.recordset[0];
-    if (!aplicacion || aplicacion.EstadoFinanciero !== 'PENDIENTE') {
+    if (!aplicacion || !['PENDIENTE', 'VERIFICADA'].includes(aplicacion.EstadoFinanciero)) {
       await transaccion.rollback();
       return null;
+    }
+    if (aplicacion.EstadoFinanciero === 'VERIFICADA') {
+      await transaccion.rollback();
+      return { idUsuario: aplicacion.IdUsuario, yaVerificada: true };
     }
 
     await transaccion.request()
@@ -309,7 +353,7 @@ export async function verificarAplicacionFinanciera(idBecaActiva, idUsuario) {
           UPDATE dbo.UsuariosRoles SET Activo = 1 WHERE IdUsuario = @idUsuario AND IdRol = @IdRol;
       `);
     await transaccion.commit();
-    return { idUsuario: aplicacion.IdUsuario };
+    return { idUsuario: aplicacion.IdUsuario, yaVerificada: false };
   } catch (error) {
     await transaccion.rollback();
     throw error;
@@ -322,7 +366,10 @@ export async function obtenerPanelBecado(idUsuario) {
     .input('idUsuario', sql.Int, idUsuario)
     .query(`
       SELECT TOP 1 b.IdBecaActiva, b.Porcentaje, b.Periodo, b.Estado, b.FechaActivacion,
-        tb.Nombre AS TipoBeca, e.CodigoExpediente, da.Promedio, da.CreditosMatriculados,
+        tb.Nombre AS TipoBeca, e.CodigoExpediente,
+        COALESCE(ra.Promedio, da.Promedio) AS Promedio,
+        COALESCE(ra.CreditosMatriculados, da.CreditosMatriculados) AS CreditosMatriculados,
+        ra.CreditosAprobados, ra.CursosPerdidos, ra.CumpleRequisitos,
         (SELECT COUNT(*) FROM dbo.AlertasSeguimiento a
           JOIN dbo.SeguimientosBecado sg ON sg.IdSeguimiento = a.IdSeguimiento
           WHERE sg.IdBecaActiva = b.IdBecaActiva AND a.Estado = 'ABIERTA') AS AlertasAbiertas
@@ -331,6 +378,14 @@ export async function obtenerPanelBecado(idUsuario) {
       JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
       JOIN dbo.TiposBeca tb ON tb.IdTipoBeca = b.IdTipoBeca
       LEFT JOIN dbo.DatosAcademicosSolicitud da ON da.IdSolicitud = s.IdSolicitud
+      OUTER APPLY (
+        SELECT TOP 1 r.Promedio, r.CreditosMatriculados, r.CreditosAprobados,
+          r.CursosPerdidos, r.CumpleRequisitos
+        FROM dbo.SeguimientosBecado sg
+        JOIN dbo.RendimientosAcademicos r ON r.IdSeguimiento = sg.IdSeguimiento
+        WHERE sg.IdBecaActiva = b.IdBecaActiva
+        ORDER BY sg.FechaRevision DESC, sg.IdSeguimiento DESC
+      ) ra
       WHERE s.IdUsuario = @idUsuario
       ORDER BY b.FechaActivacion DESC
     `);

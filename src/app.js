@@ -19,6 +19,12 @@ import rutasBeneficios from './modulos/segmentoDos/rutasBeneficios.js';
 import rutasComunicaciones from './modulos/segmentoDos/rutasComunicaciones.js';
 import rutasSeguimiento from './modulos/segmentoDos/rutasSeguimiento.js';
 import rutasAdministracion from './modulos/segmentoDos/rutasAdministracion.js';
+import rutasApelaciones from './modulos/apelaciones/rutasApelaciones.js';
+import rutasDisciplinario from './modulos/disciplinario/rutasDisciplinario.js';
+import rutasCierre from './modulos/cierre/rutasCierre.js';
+import rutasConfiguracion from './modulos/configuracion-sistema/rutasConfiguracion.js';
+import rutasSeguridad from './modulos/seguridad/rutasSeguridad.js';
+import rutasChatbot from './modulos/chatbot/rutasChatbot.js';
 
 export function crearAplicacion() {
   const app = express();
@@ -60,6 +66,12 @@ export function crearAplicacion() {
   enrutadorV1.use(rutasComunicaciones);
   enrutadorV1.use(rutasSeguimiento);
   enrutadorV1.use(rutasAdministracion);
+  enrutadorV1.use('/apelaciones', rutasApelaciones);
+  enrutadorV1.use('/disciplinario', rutasDisciplinario);
+  enrutadorV1.use('/expedientes', rutasCierre);
+  enrutadorV1.use('/configuracion', rutasConfiguracion);
+  enrutadorV1.use('/seguridad', rutasSeguridad);
+  enrutadorV1.use('/chatbot', rutasChatbot);
 
   app.use('/api/v1', enrutadorV1);
 

@@ -201,6 +201,27 @@ export async function cerrarSesionTransaccion(idSesionComite) {
     await transaccion.request().input('id', sql.Int, idSesionComite)
       .query("UPDATE dbo.SesionesComite SET Estado = 'CERRADA', FechaCierre = SYSUTCDATETIME() WHERE IdSesionComite = @id");
 
+    await transaccion.request()
+      .input('id', sql.Int, idSesionComite)
+      .input('numeroActa', sql.NVarChar(40), `ACTA-${idSesionComite}`)
+      .query(`
+        INSERT INTO dbo.ActasComite (IdSesionComite, NumeroActa, Contenido)
+        SELECT s.IdSesionComite, @numeroActa,
+          CONCAT(
+            N'Sesion: ', s.Nombre, CHAR(10),
+            N'Estado: CERRADA', CHAR(10),
+            N'Resultados publicados: ',
+            (SELECT COUNT(*) FROM dbo.CasosSesionComite cs WHERE cs.IdSesionComite = s.IdSesionComite),
+            CHAR(10),
+            N'Las resoluciones individuales fueron publicadas en los expedientes.'
+          )
+        FROM dbo.SesionesComite s
+        WHERE s.IdSesionComite = @id
+          AND NOT EXISTS (
+            SELECT 1 FROM dbo.ActasComite a WHERE a.IdSesionComite = s.IdSesionComite
+          )
+      `);
+
     await transaccion.commit();
     return resoluciones;
   } catch (error) {

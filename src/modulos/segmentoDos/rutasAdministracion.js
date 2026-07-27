@@ -3,10 +3,20 @@ import { requiereSesion } from '../../middleware/autenticacion.js';
 import { requierePermiso } from '../../middleware/autorizacion.js';
 import { asincrono } from '../../utilidades/asincrono.js';
 import { enviarExito } from '../../utilidades/respuestas.js';
+import { parametroIdPositivo } from '../../utilidades/parametrosRuta.js';
 import * as servicio from './servicioAdministracion.js';
 
 const rutas = Router();
 rutas.use(requiereSesion);
+rutas.param('id', parametroIdPositivo);
+
+function serializarArchivo(archivo) {
+  return {
+    nombreOriginal: archivo.NombreOriginal,
+    tipoMime: archivo.TipoMime,
+    contenidoBase64: `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
+  };
+}
 
 rutas.get('/usuarios', requierePermiso('USUARIO_GESTIONAR'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.listarUsuarios(req.query) })));
 rutas.post('/usuarios', requierePermiso('USUARIO_GESTIONAR'), asincrono(async (req, res) => enviarExito(res, { mensaje: 'Usuario creado.', datos: await servicio.crearUsuario(req.usuario, req.body), estadoHttp: 201 })));
@@ -47,12 +57,16 @@ rutas.delete('/comite/miembros/:id', requierePermiso('COMITE_MIEMBRO_GESTIONAR')
   enviarExito(res, { mensaje: 'Membresia desactivada.' });
 }));
 
+rutas.get('/reportes/filtros', requierePermiso('REPORTE_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.listarFiltrosReporte() })));
 rutas.get('/reportes/indicadores', requierePermiso('REPORTE_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.obtenerIndicadores(req.query) })));
 rutas.get('/reportes/becas', requierePermiso('REPORTE_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.listarBecasReporte(req.query) })));
-rutas.get('/reportes/renovaciones', requierePermiso('REPORTE_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.obtenerResumenRenovaciones() })));
+rutas.get('/reportes/renovaciones', requierePermiso('REPORTE_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.obtenerResumenRenovaciones(req.query) })));
 rutas.get('/comite/actas', requierePermiso('ACTA_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.listarActas() })));
 rutas.get('/comite/actas/:id', requierePermiso('ACTA_VER'), asincrono(async (req, res) => enviarExito(res, { datos: await servicio.obtenerActa(Number(req.params.id)) })));
 rutas.post('/comite/actas/:id/generar-documento', requierePermiso('ACTA_VER'), asincrono(async (req, res) => enviarExito(res, { mensaje: 'Documento de acta generado.', datos: await servicio.generarDocumentoActa(Number(req.params.id)) })));
+rutas.get('/comite/actas/:id/archivo', requierePermiso('ACTA_VER'), asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoActa(Number(req.params.id));
+  enviarExito(res, { datos: serializarArchivo(archivo) });
+}));
 
 export default rutas;
-

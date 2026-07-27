@@ -58,9 +58,35 @@ export function validarResultadoRenovacion(resultado, porcentajeNuevo) {
   }
 }
 
+export function validarEnvioRenovacion({
+  estado,
+  enviar,
+  datosActualizados = {},
+  cantidadDocumentos = 0
+}) {
+  if (estado !== 'BORRADOR') {
+    if (enviar && estado === 'EN_REEVALUACION') return { idempotente: true };
+    throw errorValidacion('Solo se puede modificar una renovacion en borrador.');
+  }
+  if (enviar && datosActualizados.declaracion !== true) {
+    throw errorValidacion('Debe aceptar la declaracion de veracidad antes de enviar.');
+  }
+  if (enviar && Number(cantidadDocumentos) < 1) {
+    throw errorValidacion('Debe adjuntar al menos un documento de respaldo antes de enviar.');
+  }
+  return { idempotente: false };
+}
+
+export function normalizarEstadoConsulta(estado) {
+  const normalizado = estado === 'EN_ATENCION' ? 'RESPONDIDA' : estado;
+  if (!['ABIERTA', 'RESPONDIDA', 'CERRADA'].includes(normalizado)) {
+    throw errorValidacion('El estado no es valido.');
+  }
+  return normalizado;
+}
+
 export function obtenerPaginacion(consulta = {}) {
   const pagina = Math.max(1, Number.parseInt(consulta.pagina, 10) || 1);
   const limite = Math.min(100, Math.max(1, Number.parseInt(consulta.limite, 10) || 20));
   return { pagina, limite, desplazamiento: (pagina - 1) * limite };
 }
-

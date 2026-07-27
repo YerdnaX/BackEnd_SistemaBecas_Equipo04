@@ -9,8 +9,15 @@ export async function crearNotificacion(transaccionOrPool, { idUsuario, tipo, ti
     .input('mensaje', sql.NVarChar(600), mensaje)
     .input('enlace', sql.NVarChar(300), enlace)
     .query(`
-      INSERT INTO dbo.Notificaciones (IdUsuario, Tipo, Titulo, Mensaje, Enlace)
-      VALUES (@idUsuario, @tipo, @titulo, @mensaje, @enlace)
+      IF NOT EXISTS (
+        SELECT 1 FROM dbo.Notificaciones
+        WHERE IdUsuario = @idUsuario AND Tipo = @tipo AND Titulo = @titulo
+          AND Mensaje = @mensaje
+          AND ISNULL(Enlace, '') = ISNULL(@enlace, '')
+          AND FechaCreacion >= DATEADD(HOUR, -1, SYSUTCDATETIME())
+      )
+        INSERT INTO dbo.Notificaciones (IdUsuario, Tipo, Titulo, Mensaje, Enlace)
+        VALUES (@idUsuario, @tipo, @titulo, @mensaje, @enlace)
     `);
 }
 

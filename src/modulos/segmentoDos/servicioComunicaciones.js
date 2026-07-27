@@ -1,6 +1,6 @@
 import { errorConflicto, errorNoEncontrado, errorProhibido, errorValidacion } from '../../utilidades/errorAplicacion.js';
-import { obtenerPaginacion, validarProgramacionVisita } from '../../utilidades/reglasSegmentoDos.js';
-import { crearNotificacion } from '../../servicios-compartidos/servicioNotificaciones.js';
+import { normalizarEstadoConsulta, obtenerPaginacion, validarProgramacionVisita } from '../../utilidades/reglasSegmentoDos.js';
+import { crearNotificacionCompleta as crearNotificacion } from '../../servicios-compartidos/servicioNotificacionesEventos.js';
 import * as datos from './accesoDatosComunicaciones.js';
 
 export const listarVisitas = (idExpediente) => datos.listarVisitas(idExpediente);
@@ -27,11 +27,14 @@ export async function programarVisita(idExpediente, usuario, entrada) {
 export async function reprogramarVisita(idVisita, usuario, entrada) {
   const visita = await datos.obtenerVisita(idVisita);
   if (!visita) throw errorNoEncontrado('La visita no existe.');
+  if (visita.Estado !== 'PROGRAMADA') throw errorConflicto('Solo se puede reprogramar una visita programada.');
+  if (!entrada.direccion?.trim()) throw errorValidacion('La direccion es obligatoria.');
   const fecha = validarProgramacionVisita(entrada.fechaProgramada);
   if (await datos.existeTraslapeVisita(usuario.idUsuario, fecha, idVisita)) {
     throw errorConflicto('El responsable ya tiene una visita cercana a esa hora.');
   }
-  await datos.actualizarVisita(idVisita, usuario.idUsuario, { ...entrada, fechaProgramada: fecha });
+  const actualizada = await datos.actualizarVisita(idVisita, usuario.idUsuario, { ...entrada, fechaProgramada: fecha });
+  if (!actualizada) throw errorConflicto('La visita ya no se encuentra programada.');
   const propietario = await datos.obtenerPropietarioExpediente(visita.IdExpediente);
   await crearNotificacion(null, {
     idUsuario: propietario.IdUsuario,
@@ -46,7 +49,10 @@ export async function reprogramarVisita(idVisita, usuario, entrada) {
 export async function cancelarVisita(idVisita, entrada) {
   const visita = await datos.obtenerVisita(idVisita);
   if (!visita) throw errorNoEncontrado('La visita no existe.');
-  await datos.cancelarVisita(idVisita, entrada.observacion);
+  if (visita.Estado === 'CANCELADA') return visita;
+  if (visita.Estado !== 'PROGRAMADA') throw errorConflicto('Solo se puede cancelar una visita programada.');
+  const cancelada = await datos.cancelarVisita(idVisita, entrada.observacion);
+  if (!cancelada) throw errorConflicto('La visita ya no se encuentra programada.');
   const propietario = await datos.obtenerPropietarioExpediente(visita.IdExpediente);
   await crearNotificacion(null, {
     idUsuario: propietario.IdUsuario,
@@ -59,6 +65,9 @@ export async function cancelarVisita(idVisita, entrada) {
 
 export async function registrarInforme(idVisita, entrada) {
   if (!entrada.resultado?.trim()) throw errorValidacion('El resultado es obligatorio.');
+  const visita = await datos.obtenerVisita(idVisita);
+  if (!visita) throw errorNoEncontrado('La visita no existe.');
+  if (visita.Estado === 'CANCELADA') throw errorConflicto('No se puede registrar un informe para una visita cancelada.');
   const resultado = await datos.registrarInformeVisita(idVisita, entrada);
   if (!resultado) throw errorNoEncontrado('La visita no existe.');
   return resultado;
@@ -111,10 +120,9 @@ export async function asignarConsulta(idConsulta, usuario) {
 }
 
 export async function cambiarEstadoConsulta(idConsulta, estado) {
-  if (!['ABIERTA', 'RESPONDIDA', 'CERRADA'].includes(estado)) {
-    throw errorValidacion('El estado no es valido.');
-  }
-  await datos.cambiarEstadoConsulta(idConsulta, estado);
+  const estadoPersistido = normalizarEstadoConsulta(estado);
+  const actualizada = await datos.cambiarEstadoConsulta(idConsulta, estadoPersistido);
+  if (!actualizada) throw errorNoEncontrado('La consulta no existe.');
 }
 
 export const listarNoticias = (usuario) => datos.listarNoticias(usuario);
@@ -141,7 +149,7 @@ export async function crearNoticia(usuario, entrada) {
 
 export async function actualizarNoticia(id, entrada) {
   validarNoticia(entrada);
-  await datos.actualizarNoticia(id, entrada);
+  if (!await datos.actualizarNoticia(id, entrada)) throw errorNoEncontrado('La noticia no existe.');
 }
 
 export async function cambiarEstadoNoticia(id, estado) {
@@ -149,5 +157,5 @@ export async function cambiarEstadoNoticia(id, estado) {
     throw errorValidacion('El estado no es valido.');
   }
   const estadoPersistido = ['DESPUBLICADA', 'INACTIVA'].includes(estado) ? 'ARCHIVADA' : estado;
-  await datos.cambiarEstadoNoticia(id, estadoPersistido);
+  if (!await datos.cambiarEstadoNoticia(id, estadoPersistido)) throw errorNoEncontrado('La noticia no existe.');
 }

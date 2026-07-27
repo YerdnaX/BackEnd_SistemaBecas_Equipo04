@@ -10,7 +10,7 @@ export async function listarUsuarios(filtros) {
     .query(`
       SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido,
         u.Estado, u.CorreoVerificado, u.Activo, u.FechaCreacion,
-        STRING_AGG(r.Codigo, ',') AS Roles
+        STRING_AGG(r.Codigo, ',') AS Roles, COUNT(*) OVER() AS Total
       FROM dbo.Usuarios u
       LEFT JOIN dbo.UsuariosRoles ur ON ur.IdUsuario = u.IdUsuario AND ur.Activo = 1
       LEFT JOIN dbo.Roles r ON r.IdRol = ur.IdRol
@@ -21,10 +21,12 @@ export async function listarUsuarios(filtros) {
       ORDER BY u.FechaCreacion DESC
       OFFSET @desplazamiento ROWS FETCH NEXT @limite ROWS ONLY
     `);
-  return resultado.recordset.map((usuario) => ({
+  const total = Number(resultado.recordset[0]?.Total || 0);
+  const items = resultado.recordset.map(({ Total, ...usuario }) => ({
     ...usuario,
     Roles: usuario.Roles ? usuario.Roles.split(',') : []
   }));
+  return { items, total, pagina: filtros.pagina, limite: filtros.limite };
 }
 
 export async function obtenerUsuario(idUsuario) {
@@ -231,8 +233,18 @@ export async function cambiarEstadoEmpleado(idEmpleado, activo) {
 export async function listarCatalogosPersonal() {
   const pool = await obtenerPool();
   const [puestos, departamentos, comites] = await Promise.all([
-    pool.request().query('SELECT * FROM dbo.Puestos WHERE Activo = 1 ORDER BY Nombre'),
-    pool.request().query('SELECT * FROM dbo.Departamentos WHERE Activo = 1 ORDER BY Nombre'),
+    pool.request().query(`
+      SELECT * FROM dbo.Puestos p
+      WHERE p.Activo = 1
+         OR EXISTS (SELECT 1 FROM dbo.Empleados e WHERE e.IdPuesto = p.IdPuesto)
+      ORDER BY p.Activo DESC, p.Nombre
+    `),
+    pool.request().query(`
+      SELECT * FROM dbo.Departamentos d
+      WHERE d.Activo = 1
+         OR EXISTS (SELECT 1 FROM dbo.Empleados e WHERE e.IdDepartamento = d.IdDepartamento)
+      ORDER BY d.Activo DESC, d.Nombre
+    `),
     pool.request().query('SELECT * FROM dbo.ComitesBeca WHERE Activo = 1 ORDER BY Nombre')
   ]);
   return { puestos: puestos.recordset, departamentos: departamentos.recordset, comites: comites.recordset };
@@ -302,7 +314,12 @@ export async function obtenerIndicadores(filtros) {
 
 export async function listarBecasReporte(filtros) {
   const pool = await obtenerPool();
-  const resultado = await pool.request().input('periodo', sql.NVarChar(30), filtros.periodo || null).query(`
+  const resultado = await pool.request()
+    .input('periodo', sql.NVarChar(30), filtros.periodo || null)
+    .input('facultad', sql.NVarChar(150), filtros.facultad || null)
+    .input('estado', sql.VarChar(30), filtros.estado || null)
+    .input('idTipo', sql.Int, filtros.idTipoBeca ? Number(filtros.idTipoBeca) : null)
+    .query(`
     SELECT b.IdBecaActiva, CONCAT(u.Nombre, ' ', u.PrimerApellido) AS Estudiante,
       da.NumeroEstudiante, da.Carrera, tb.Nombre AS TipoBeca, b.Porcentaje, b.Periodo, b.Estado
     FROM dbo.BecasActivas b
@@ -312,16 +329,53 @@ export async function listarBecasReporte(filtros) {
     JOIN dbo.TiposBeca tb ON tb.IdTipoBeca = b.IdTipoBeca
     LEFT JOIN dbo.DatosAcademicosSolicitud da ON da.IdSolicitud = s.IdSolicitud
     WHERE (@periodo IS NULL OR b.Periodo = @periodo)
+      AND (@facultad IS NULL OR da.Carrera = @facultad)
+      AND (@estado IS NULL OR b.Estado = @estado)
+      AND (@idTipo IS NULL OR b.IdTipoBeca = @idTipo)
     ORDER BY b.FechaActivacion DESC
   `);
   return resultado.recordset;
 }
 
-export async function obtenerResumenRenovaciones() {
+export async function listarFiltrosReporte() {
   const pool = await obtenerPool();
-  const resultado = await pool.request().query(`
+  const [periodos, carreras, tiposBeca, estados] = await Promise.all([
+    pool.request().query(`
+      SELECT DISTINCT Periodo
+      FROM dbo.BecasActivas
+      WHERE Periodo IS NOT NULL AND LTRIM(RTRIM(Periodo)) <> ''
+      ORDER BY Periodo DESC
+    `),
+    pool.request().query(`
+      SELECT DISTINCT Carrera
+      FROM dbo.DatosAcademicosSolicitud
+      WHERE Carrera IS NOT NULL AND LTRIM(RTRIM(Carrera)) <> ''
+      ORDER BY Carrera
+    `),
+    pool.request().query(`
+      SELECT IdTipoBeca, Nombre FROM dbo.TiposBeca WHERE Activo = 1 ORDER BY Nombre
+    `),
+    pool.request().query(`
+      SELECT DISTINCT Estado FROM dbo.BecasActivas
+      WHERE Estado IS NOT NULL ORDER BY Estado
+    `)
+  ]);
+  return {
+    periodos: periodos.recordset.map((fila) => fila.Periodo),
+    carreras: carreras.recordset.map((fila) => fila.Carrera),
+    tiposBeca: tiposBeca.recordset,
+    estados: estados.recordset.map((fila) => fila.Estado)
+  };
+}
+
+export async function obtenerResumenRenovaciones(filtros = {}) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('periodo', sql.NVarChar(30), filtros.periodo || null)
+    .query(`
     SELECT Periodo, COALESCE(ResultadoDetalle, EstadoProceso) AS Estado, COUNT(*) AS Total
     FROM dbo.RenovacionesBeca
+    WHERE (@periodo IS NULL OR Periodo = @periodo)
     GROUP BY Periodo, COALESCE(ResultadoDetalle, EstadoProceso)
     ORDER BY Periodo DESC
   `);
@@ -336,6 +390,27 @@ export async function listarActas() {
     ORDER BY a.FechaGeneracion DESC
   `);
   return resultado.recordset;
+}
+
+export async function sincronizarActasSesionesCerradas() {
+  const pool = await obtenerPool();
+  await pool.request().query(`
+    INSERT INTO dbo.ActasComite (IdSesionComite, NumeroActa, Contenido)
+    SELECT s.IdSesionComite, CONCAT('ACTA-', s.IdSesionComite),
+      CONCAT(
+        N'Sesion: ', s.Nombre, CHAR(10),
+        N'Estado: CERRADA', CHAR(10),
+        N'Resultados publicados: ', COUNT(cs.IdCasoSesion), CHAR(10),
+        N'Las resoluciones individuales fueron publicadas en los expedientes.'
+      )
+    FROM dbo.SesionesComite s
+    LEFT JOIN dbo.CasosSesionComite cs ON cs.IdSesionComite = s.IdSesionComite
+    WHERE s.Estado = 'CERRADA'
+      AND NOT EXISTS (
+        SELECT 1 FROM dbo.ActasComite a WHERE a.IdSesionComite = s.IdSesionComite
+      )
+    GROUP BY s.IdSesionComite, s.Nombre
+  `);
 }
 
 export async function obtenerActa(idActa) {
