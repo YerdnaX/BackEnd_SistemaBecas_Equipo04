@@ -33,12 +33,15 @@
    ```powershell
    $env:ADMIN_CORREO="admin@cuc.ac.cr"; $env:ADMIN_CONTRASENA="Cambiar123!"; node scripts/crearAdministrador.js
    ```
-6. Para dejar todo listo con Segmento 03 y 2FA en una sola corrida adicional, ejecute:
-    - `BackEnd/basedatos/datos_prueba.sql`
-    - Además de los datos de prueba, este script aplica ajustes idempotentes de Segmento 03 (estados, permisos, plantillas, parámetros y FAQs).
-    - También configura `Usuarios.RequiereDosFactores` con esta regla:
-       - usuarios existentes actuales: `RequiereDosFactores = 0` (no se les pedirá 2FA);
-       - usuarios nuevos: `RequiereDosFactores = 1` por defecto (sí se les pedirá 2FA).
+6. Para una base existente, aplique la migración formal de Segmento 03:
+   ```bash
+   cd BackEnd
+   npm run actualizar:segmento3
+   npm run verificar:segmento3
+   ```
+7. `BackEnd/basedatos/datos_prueba.sql` es exclusivo de desarrollo/pruebas:
+   - crea usuarios de prueba y datos de apoyo;
+   - no es parte del flujo de despliegue productivo.
 
 ## Servidor confirmado
 

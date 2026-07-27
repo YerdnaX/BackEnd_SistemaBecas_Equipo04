@@ -10,8 +10,10 @@
     "test": "node --test test/*.test.js",
     "verificar:conexion": "node scripts/verificarConexion.js",
     "verificar:segmento2": "node scripts/verificarSegmentoDos.js",
+    "verificar:segmento3": "node scripts/verificarSegmentoTres.js",
     "crear:administrador": "node scripts/crearAdministrador.js",
-    "actualizar:segmento2": "node scripts/aplicarActualizacionSegmentoDos.js"
+    "actualizar:segmento2": "node scripts/aplicarActualizacionSegmentoDos.js",
+    "actualizar:segmento3": "node scripts/aplicarActualizacionSegmentoTres.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

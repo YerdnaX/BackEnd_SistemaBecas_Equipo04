@@ -21,7 +21,7 @@ export async function obtenerApelacionActivaPorResolucion(idResolucion) {
     .input('idResolucion', sql.Int, idResolucion)
     .query(`
       SELECT * FROM dbo.Apelaciones
-      WHERE IdResolucion = @idResolucion AND Estado IN ('RECIBIDA','EN_REVISION')
+      WHERE IdResolucion = @idResolucion AND Estado IN ('PRESENTADA','EN_REVISION')
     `);
   return resultado.recordset[0] || null;
 }
@@ -36,7 +36,7 @@ export async function crearApelacion({ idExpediente, idResolucion, motivo, fecha
     .query(`
       INSERT INTO dbo.Apelaciones (IdExpediente, IdResolucion, Motivo, Estado, FechaLimite)
       OUTPUT INSERTED.IdApelacion
-      VALUES (@idExpediente, @idResolucion, @motivo, 'RECIBIDA', @fechaLimite)
+      VALUES (@idExpediente, @idResolucion, @motivo, 'PRESENTADA', @fechaLimite)
     `);
   return resultado.recordset[0].IdApelacion;
 }
@@ -50,7 +50,7 @@ export async function crearApelacionRechazadaPorPlazo({ idExpediente, idResoluci
     .query(`
       INSERT INTO dbo.Apelaciones (IdExpediente, IdResolucion, Motivo, Estado)
       OUTPUT INSERTED.IdApelacion
-      VALUES (@idExpediente, @idResolucion, @motivo, 'RECHAZADA_POR_PLAZO')
+      VALUES (@idExpediente, @idResolucion, @motivo, 'RESUELTA')
     `);
   return resultado.recordset[0].IdApelacion;
 }
@@ -146,7 +146,7 @@ export async function resolverApelacionTransaccion({ idApelacion, idExpediente, 
   try {
     await transaccion.request()
       .input('id', sql.Int, idApelacion)
-      .input('estado', sql.VarChar(20), aFavor ? 'RESUELTA_A_FAVOR' : 'RESUELTA_EN_CONTRA')
+      .input('estado', sql.VarChar(20), 'RESUELTA')
       .query('UPDATE dbo.Apelaciones SET Estado = @estado WHERE IdApelacion = @id');
 
     await transaccion.request()
@@ -189,7 +189,7 @@ export async function contarApelacionesPendientesExpediente(idExpediente) {
     .input('idExpediente', sql.Int, idExpediente)
     .query(`
       SELECT COUNT(*) AS Total FROM dbo.Apelaciones
-      WHERE IdExpediente = @idExpediente AND Estado IN ('RECIBIDA','EN_REVISION')
+      WHERE IdExpediente = @idExpediente AND Estado IN ('PRESENTADA','EN_REVISION')
     `);
   return resultado.recordset[0].Total;
 }

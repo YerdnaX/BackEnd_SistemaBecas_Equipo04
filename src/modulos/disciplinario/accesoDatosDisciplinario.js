@@ -20,7 +20,7 @@ export async function obtenerInvestigacionAbiertaPorBeca(idBecaActiva) {
     .input('idBecaActiva', sql.Int, idBecaActiva)
     .query(`
       SELECT * FROM dbo.InvestigacionesBeca
-      WHERE IdBecaActiva = @idBecaActiva AND Estado IN ('ABIERTA','EN_DESCARGOS','EN_ANALISIS')
+      WHERE IdBecaActiva = @idBecaActiva AND Estado IN ('ABIERTA','EN_REVISION')
     `);
   return resultado.recordset[0] || null;
 }
@@ -35,7 +35,7 @@ export async function crearInvestigacion({ idBecaActiva, causal, descripcion, id
     .query(`
       INSERT INTO dbo.InvestigacionesBeca (IdBecaActiva, Causal, Descripcion, Estado, IdResponsable)
       OUTPUT INSERTED.IdInvestigacion
-      VALUES (@idBecaActiva, @causal, @descripcion, 'EN_DESCARGOS', @idResponsable)
+      VALUES (@idBecaActiva, @causal, @descripcion, 'EN_REVISION', @idResponsable)
     `);
   return resultado.recordset[0].IdInvestigacion;
 }
@@ -108,7 +108,7 @@ export async function pasarAAnalisis(idInvestigacion) {
   const pool = await obtenerPool();
   await pool.request()
     .input('id', sql.Int, idInvestigacion)
-    .query(`UPDATE dbo.InvestigacionesBeca SET Estado = 'EN_ANALISIS' WHERE IdInvestigacion = @id`);
+    .query(`UPDATE dbo.InvestigacionesBeca SET Estado = 'EN_REVISION' WHERE IdInvestigacion = @id`);
 }
 
 export async function resolverInvestigacionTransaccion({ idInvestigacion, idBecaActiva, resultadoDb, estadoBecaNuevo, motivo, idResueltoPor }) {

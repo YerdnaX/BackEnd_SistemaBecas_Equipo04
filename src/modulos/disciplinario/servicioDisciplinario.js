@@ -79,7 +79,7 @@ export async function presentarDescargo(idInvestigacion, { detalle, idArchivo },
 
   const investigacion = await obtenerInvestigacionOFallar(idInvestigacion);
   if (investigacion.IdUsuario !== usuario.idUsuario) throw errorProhibido('Solo puede presentar descargos sobre su propio proceso.');
-  if (investigacion.Estado !== 'EN_DESCARGOS') throw errorConflicto('El proceso no está recibiendo descargos en este momento.');
+  if (investigacion.Estado !== 'EN_REVISION') throw errorConflicto('El proceso no está recibiendo descargos en este momento.');
 
   const plazoDias = await obtenerParametro('SUSPENSION_PLAZO_DESCARGOS_DIAS', 8);
   const fechaLimite = new Date(investigacion.FechaApertura);
@@ -101,7 +101,7 @@ export async function presentarDescargo(idInvestigacion, { detalle, idArchivo },
 
 export async function pasarAAnalisis(idInvestigacion, usuario) {
   const investigacion = await obtenerInvestigacionOFallar(idInvestigacion);
-  if (investigacion.Estado !== 'EN_DESCARGOS') throw errorConflicto('Solo se puede pasar a análisis un proceso que está recibiendo descargos.');
+  if (investigacion.Estado !== 'EN_REVISION') throw errorConflicto('Solo se puede pasar a análisis un proceso que está en revisión.');
   await datos.pasarAAnalisis(idInvestigacion);
   await registrarAuditoria({
     idUsuario: usuario.idUsuario,
@@ -115,7 +115,7 @@ export async function pasarAAnalisis(idInvestigacion, usuario) {
 
 export async function resolverInvestigacion(idInvestigacion, { resultado, motivo }, idResueltoPor) {
   const investigacion = await obtenerInvestigacionOFallar(idInvestigacion);
-  if (!['EN_DESCARGOS', 'EN_ANALISIS'].includes(investigacion.Estado)) {
+  if (!['EN_REVISION'].includes(investigacion.Estado)) {
     throw errorConflicto('El proceso ya fue resuelto o cerrado.');
   }
   if (!MAPA_RESULTADO_A_DB[resultado]) {

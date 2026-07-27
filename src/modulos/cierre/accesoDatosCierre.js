@@ -21,9 +21,9 @@ export async function obtenerBloqueadoresCierre(idExpediente, idBecaActiva) {
 
   const resultado = await solicitud.query(`
     SELECT
-      (SELECT COUNT(*) FROM dbo.Apelaciones WHERE IdExpediente = @idExpediente AND Estado IN ('RECIBIDA','EN_REVISION')) AS ApelacionesPendientes,
+      (SELECT COUNT(*) FROM dbo.Apelaciones WHERE IdExpediente = @idExpediente AND Estado IN ('PRESENTADA','EN_REVISION')) AS ApelacionesPendientes,
       ${idBecaActiva ? `
-      (SELECT COUNT(*) FROM dbo.InvestigacionesBeca WHERE IdBecaActiva = @idBecaActiva AND Estado IN ('ABIERTA','EN_DESCARGOS','EN_ANALISIS')) AS InvestigacionesPendientes,
+      (SELECT COUNT(*) FROM dbo.InvestigacionesBeca WHERE IdBecaActiva = @idBecaActiva AND Estado IN ('ABIERTA','EN_REVISION')) AS InvestigacionesPendientes,
       (SELECT COUNT(*) FROM dbo.JustificacionesCurso WHERE IdBecaActiva = @idBecaActiva AND Estado = 'PENDIENTE') AS JustificacionesPendientes,
       (SELECT COUNT(*) FROM dbo.RenovacionesBeca WHERE IdBecaActiva = @idBecaActiva AND Estado = 'PENDIENTE') AS RenovacionesPendientes
       ` : `0 AS InvestigacionesPendientes, 0 AS JustificacionesPendientes, 0 AS RenovacionesPendientes`}

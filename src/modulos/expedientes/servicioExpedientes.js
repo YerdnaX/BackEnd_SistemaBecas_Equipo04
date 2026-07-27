@@ -57,6 +57,11 @@ export async function revisarDocumento(idExpediente, idDocumento, { estado, obse
   const estadosValidos = ['VALIDO', 'RECHAZADO', 'REQUIERE_SUBSANACION'];
   if (!estadosValidos.includes(estado)) throw errorValidacion('El estado de revisión no es válido.');
 
+  const requiereObservacion = ['RECHAZADO', 'REQUIERE_SUBSANACION'].includes(estado);
+  if (requiereObservacion && !observacion?.trim()) {
+    throw errorValidacion('Debe indicar una observación al rechazar un documento o solicitar su subsanación.');
+  }
+
   const documento = await datos.obtenerDocumentoDeExpediente(idExpediente, idDocumento);
   if (!documento) throw errorNoEncontrado('El documento no pertenece a este expediente.');
 

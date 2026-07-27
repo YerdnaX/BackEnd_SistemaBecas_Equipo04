@@ -91,7 +91,7 @@ export async function obtenerApelacion(idApelacion, usuario) {
 
 export async function asignarRevisorApelacion(idApelacion, idRevisor, idAsignadoPor) {
   const apelacion = await obtenerApelacionOFallar(idApelacion);
-  if (!['RECIBIDA', 'EN_REVISION'].includes(apelacion.Estado)) {
+  if (!['PRESENTADA', 'EN_REVISION'].includes(apelacion.Estado)) {
     throw errorConflicto('Solo se puede asignar revisor a apelaciones en trámite.');
   }
   if (!idRevisor) throw errorValidacion('Debe indicar el revisor.');
@@ -110,7 +110,7 @@ export async function asignarRevisorApelacion(idApelacion, idRevisor, idAsignado
 
 export async function resolverApelacion(idApelacion, { aFavor, motivo, nuevoPorcentaje, observaciones }, idResueltoPor) {
   const apelacion = await obtenerApelacionOFallar(idApelacion);
-  if (!['RECIBIDA', 'EN_REVISION'].includes(apelacion.Estado)) {
+  if (!['PRESENTADA', 'EN_REVISION'].includes(apelacion.Estado)) {
     throw errorConflicto('La apelación ya fue resuelta.');
   }
   if (aFavor === undefined || aFavor === null) throw errorValidacion('Debe indicar si la apelación se resuelve a favor o en contra.');
