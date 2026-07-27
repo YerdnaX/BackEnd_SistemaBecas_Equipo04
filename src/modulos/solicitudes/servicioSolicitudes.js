@@ -29,6 +29,66 @@ async function obtenerSolicitudPropiaEditable(idSolicitud, usuarioActual) {
   return solicitud;
 }
 
+function obtenerEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const nacimiento = new Date(`${fechaNacimiento}T00:00:00`);
+  if (Number.isNaN(nacimiento.getTime())) return null;
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nacimiento.getFullYear();
+  const mes = hoy.getMonth() - nacimiento.getMonth();
+  const dia = hoy.getDate() - nacimiento.getDate();
+  if (mes < 0 || (mes === 0 && dia < 0)) edad -= 1;
+  return edad;
+}
+
+function obtenerPeriodoActual(fecha = new Date()) {
+  const mes = fecha.getMonth() + 1;
+  const anio = fecha.getFullYear();
+  const cuatrimestre = mes <= 4 ? 'I' : mes <= 8 ? 'II' : 'III';
+  return `${cuatrimestre} Cuatrimestre ${anio}`;
+}
+
+const CARRERAS_PERMITIDAS = new Set([
+  'Dirección y Administración de Empresas',
+  'Electrónica',
+  'Investigación Criminal',
+  'Mecánica Dental',
+  'Secretariado Ejecutivo',
+  'Tecnologías de Información',
+  'Turismo',
+  'Big Data',
+  'Gestión de Calidad',
+  'Ciberseguridad'
+]);
+
+const CONDICIONES_ACADEMICAS = new Set([
+  'Regular',
+  'En buen estado',
+  'En riesgo académico',
+  'En prueba',
+  'Suspendido'
+]);
+
+const TIPOS_VIVIENDA = new Set([
+  'Propia',
+  'Alquilada',
+  'Prestada',
+  'Familiar',
+  'Cedida',
+  'Residencial',
+  'Otro'
+]);
+
+const SITUACIONES_LABORALES = new Set([
+  'Empleado(a)',
+  'Desempleado(a)',
+  'Independiente',
+  'Pensionado(a)',
+  'Estudiante',
+  'Trabajo temporal',
+  'Otro'
+]);
+
 export async function crearSolicitud(idUsuario, idConvocatoria) {
   const convocatoria = await datosConvocatorias.obtenerConvocatoriaPorId(idConvocatoria);
   if (!convocatoria || convocatoria.Estado !== 'PUBLICADA') {
@@ -56,10 +116,20 @@ export async function listarSolicitudesUsuario(idUsuario) {
 export async function guardarDatosPersonales(idSolicitud, usuarioActual, datosEntrada) {
   await obtenerSolicitudPropiaEditable(idSolicitud, usuarioActual);
   const errores = [];
-  if (!datosEntrada.identificacion?.trim()) errores.push({ campo: 'identificacion', mensaje: 'La identificación es obligatoria.' });
+  if (!/^\d{9}$/.test(String(datosEntrada.identificacion || ''))) {
+    errores.push({ campo: 'identificacion', mensaje: 'La identificación debe contener exactamente 9 dígitos numéricos.' });
+  }
   if (!datosEntrada.fechaNacimiento) errores.push({ campo: 'fechaNacimiento', mensaje: 'La fecha de nacimiento es obligatoria.' });
-  if (!datosEntrada.telefono?.trim()) errores.push({ campo: 'telefono', mensaje: 'El teléfono es obligatorio.' });
+  else if ((obtenerEdad(datosEntrada.fechaNacimiento) ?? -1) <= 18) {
+    errores.push({ campo: 'fechaNacimiento', mensaje: 'Debe ser mayor de 18 años.' });
+  }
+  if (!/^\d{8}$/.test(String(datosEntrada.telefono || ''))) {
+    errores.push({ campo: 'telefono', mensaje: 'El teléfono debe contener exactamente 8 dígitos numéricos.' });
+  }
   if (!datosEntrada.direccion?.trim()) errores.push({ campo: 'direccion', mensaje: 'La dirección es obligatoria.' });
+  if (datosEntrada.telefonoEmergencia && !/^\d{8}$/.test(String(datosEntrada.telefonoEmergencia || ''))) {
+    errores.push({ campo: 'telefonoEmergencia', mensaje: 'El teléfono de emergencia debe contener exactamente 8 dígitos numéricos.' });
+  }
   if (errores.length > 0) throw errorValidacion('Revise los datos personales.', errores);
 
   await datos.guardarDatosPersonales(idSolicitud, datosEntrada);
@@ -71,14 +141,24 @@ export async function guardarDatosAcademicos(idSolicitud, usuarioActual, datosEn
   await obtenerSolicitudPropiaEditable(idSolicitud, usuarioActual);
   const errores = [];
   if (!datosEntrada.numeroEstudiante?.trim()) errores.push({ campo: 'numeroEstudiante', mensaje: 'El número de estudiante es obligatorio.' });
-  if (!datosEntrada.carrera?.trim()) errores.push({ campo: 'carrera', mensaje: 'La carrera es obligatoria.' });
-  if (!datosEntrada.nivelAcademico?.trim()) errores.push({ campo: 'nivelAcademico', mensaje: 'El nivel académico es obligatorio.' });
-  if (datosEntrada.promedio === undefined || Number(datosEntrada.promedio) < 0 || Number(datosEntrada.promedio) > 100) {
+  if (!CARRERAS_PERMITIDAS.has(String(datosEntrada.carrera || ''))) {
+    errores.push({ campo: 'carrera', mensaje: 'La carrera seleccionada no es válida.' });
+  }
+  if (!CONDICIONES_ACADEMICAS.has(String(datosEntrada.condicionAcademica || ''))) {
+    errores.push({ campo: 'condicionAcademica', mensaje: 'La condición académica seleccionada no es válida.' });
+  }
+  if (datosEntrada.promedio === undefined || Number.isNaN(Number(datosEntrada.promedio)) || Number(datosEntrada.promedio) < 0 || Number(datosEntrada.promedio) > 100) {
     errores.push({ campo: 'promedio', mensaje: 'El promedio debe estar entre 0 y 100.' });
+  }
+  if (!Number.isInteger(Number(datosEntrada.creditosMatriculados)) || Number(datosEntrada.creditosMatriculados) <= 0) {
+    errores.push({ campo: 'creditosMatriculados', mensaje: 'Los créditos matriculados deben ser un número entero positivo.' });
   }
   if (errores.length > 0) throw errorValidacion('Revise los datos académicos.', errores);
 
-  await datos.guardarDatosAcademicos(idSolicitud, datosEntrada);
+  await datos.guardarDatosAcademicos(idSolicitud, {
+    ...datosEntrada,
+    nivelAcademico: obtenerPeriodoActual()
+  });
   await actualizarProgresoSolicitud(idSolicitud);
   return obtenerSolicitud(idSolicitud, usuarioActual);
 }
@@ -86,14 +166,21 @@ export async function guardarDatosAcademicos(idSolicitud, usuarioActual, datosEn
 export async function guardarDatosSocioeconomicos(idSolicitud, usuarioActual, datosEntrada) {
   await obtenerSolicitudPropiaEditable(idSolicitud, usuarioActual);
   const errores = [];
-  if (!datosEntrada.tipoVivienda?.trim()) errores.push({ campo: 'tipoVivienda', mensaje: 'El tipo de vivienda es obligatorio.' });
-  if (!Number(datosEntrada.cantidadIntegrantes) || Number(datosEntrada.cantidadIntegrantes) <= 0) {
-    errores.push({ campo: 'cantidadIntegrantes', mensaje: 'La cantidad de integrantes debe ser mayor que cero.' });
+  if (!TIPOS_VIVIENDA.has(String(datosEntrada.tipoVivienda || ''))) {
+    errores.push({ campo: 'tipoVivienda', mensaje: 'El tipo de vivienda seleccionado no es válido.' });
   }
-  if (datosEntrada.ingresoMensual === undefined || Number(datosEntrada.ingresoMensual) < 0) {
-    errores.push({ campo: 'ingresoMensual', mensaje: 'El ingreso mensual es obligatorio.' });
+  if (!Number.isInteger(Number(datosEntrada.cantidadIntegrantes)) || Number(datosEntrada.cantidadIntegrantes) <= 0) {
+    errores.push({ campo: 'cantidadIntegrantes', mensaje: 'La cantidad de integrantes debe ser un entero positivo.' });
   }
-  if (!datosEntrada.situacionLaboral?.trim()) errores.push({ campo: 'situacionLaboral', mensaje: 'La situación laboral es obligatoria.' });
+  if (datosEntrada.ingresoMensual === undefined || Number.isNaN(Number(datosEntrada.ingresoMensual)) || Number(datosEntrada.ingresoMensual) <= 0) {
+    errores.push({ campo: 'ingresoMensual', mensaje: 'El ingreso mensual debe ser un número positivo.' });
+  }
+  if (datosEntrada.gastoMensual === undefined || Number.isNaN(Number(datosEntrada.gastoMensual)) || Number(datosEntrada.gastoMensual) <= 0) {
+    errores.push({ campo: 'gastoMensual', mensaje: 'Los gastos mensuales deben ser un número positivo.' });
+  }
+  if (!SITUACIONES_LABORALES.has(String(datosEntrada.situacionLaboral || ''))) {
+    errores.push({ campo: 'situacionLaboral', mensaje: 'La situación laboral seleccionada no es válida.' });
+  }
   if (errores.length > 0) throw errorValidacion('Revise los datos socioeconómicos.', errores);
 
   await datos.guardarDatosSocioeconomicos(idSolicitud, datosEntrada);

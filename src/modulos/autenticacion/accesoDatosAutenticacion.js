@@ -113,6 +113,18 @@ export async function activarUsuario(idUsuario) {
     `);
 }
 
+export async function actualizarCorreoUsuario(idUsuario, correo) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .input('correo', sql.NVarChar(150), correo.toLowerCase())
+    .query(`
+      UPDATE dbo.Usuarios
+      SET Correo = @correo, CorreoVerificado = 1, FechaActualizacion = SYSUTCDATETIME()
+      WHERE IdUsuario = @idUsuario
+    `);
+}
+
 // --- Tokens de activacion ---
 
 export async function invalidarTokensActivacionUsuario(idUsuario) {
@@ -273,6 +285,57 @@ export async function marcarTokenRecuperacionUsado(idTokenRecuperacion) {
   await pool.request()
     .input('id', sql.Int, idTokenRecuperacion)
     .query('UPDATE dbo.TokensRecuperacion SET FechaUso = SYSUTCDATETIME() WHERE IdTokenRecuperacion = @id');
+}
+
+// --- Tokens de cambio de correo ---
+
+export async function invalidarTokensCambioCorreoUsuario(idUsuario) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .query(`
+      UPDATE dbo.TokensCambioCorreo
+      SET FechaUso = SYSUTCDATETIME()
+      WHERE IdUsuario = @idUsuario AND FechaUso IS NULL
+    `);
+}
+
+export async function crearTokenCambioCorreo(idUsuario, correoNuevo, tokenHash, fechaVencimiento) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .input('correoNuevo', sql.NVarChar(150), correoNuevo.toLowerCase())
+    .input('tokenHash', sql.NVarChar(255), tokenHash)
+    .input('fechaVencimiento', sql.DateTime2, fechaVencimiento)
+    .query(`
+      INSERT INTO dbo.TokensCambioCorreo (IdUsuario, CorreoNuevo, TokenHash, FechaVencimiento)
+      VALUES (@idUsuario, @correoNuevo, @tokenHash, @fechaVencimiento)
+    `);
+}
+
+export async function obtenerTokenCambioCorreoVigentePorUsuario(idUsuario, correoNuevo, tokenHash) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .input('correoNuevo', sql.NVarChar(150), correoNuevo.toLowerCase())
+    .input('tokenHash', sql.NVarChar(255), tokenHash)
+    .query(`
+      SELECT TOP 1 * FROM dbo.TokensCambioCorreo
+      WHERE IdUsuario = @idUsuario
+        AND CorreoNuevo = @correoNuevo
+        AND TokenHash = @tokenHash
+        AND FechaUso IS NULL
+        AND FechaVencimiento > SYSUTCDATETIME()
+      ORDER BY IdTokenCambioCorreo DESC
+    `);
+  return resultado.recordset[0] || null;
+}
+
+export async function marcarTokenCambioCorreoUsado(idTokenCambioCorreo) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('id', sql.Int, idTokenCambioCorreo)
+    .query('UPDATE dbo.TokensCambioCorreo SET FechaUso = SYSUTCDATETIME() WHERE IdTokenCambioCorreo = @id');
 }
 
 // --- Sesiones (refresh token) ---

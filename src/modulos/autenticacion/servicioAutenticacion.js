@@ -24,6 +24,16 @@ function ocultarCorreo(correo) {
   return `${inicio}${'*'.repeat(Math.max(usuario.length - 2, 1))}@${dominio}`;
 }
 
+function obtenerTipoUsuario(roles = []) {
+  if (roles.includes('ADMINISTRADOR')) return 'Administrador';
+  if (roles.includes('COORDINADOR_BECAS')) return 'Coordinador de becas';
+  if (roles.includes('TRABAJADORA_SOCIAL')) return 'Trabajadora social';
+  if (roles.includes('COMITE_BECAS')) return 'Comité de becas';
+  if (roles.includes('BECADO')) return 'Becado';
+  if (roles.includes('ASPIRANTE')) return 'Aspirante';
+  return 'Usuario';
+}
+
 async function generarTokensSesion(usuario, contexto) {
   const { roles, permisos } = await datosAuth.obtenerRolesYPermisos(usuario.IdUsuario);
 
@@ -47,7 +57,14 @@ async function generarTokensSesion(usuario, contexto) {
   return {
     tokenAcceso,
     refreshToken,
-    usuario: { idUsuario: usuario.IdUsuario, correo: usuario.Correo, nombre: usuario.Nombre, roles, permisos }
+    usuario: {
+      idUsuario: usuario.IdUsuario,
+      correo: usuario.Correo,
+      nombre: usuario.Nombre,
+      tipoUsuario: obtenerTipoUsuario(roles),
+      roles,
+      permisos
+    }
   };
 }
 
@@ -326,6 +343,7 @@ export async function obtenerUsuarioActual(idUsuario) {
     nombre: usuario.Nombre,
     primerApellido: usuario.PrimerApellido,
     segundoApellido: usuario.SegundoApellido,
+    tipoUsuario: obtenerTipoUsuario(roles),
     roles,
     permisos
   };
