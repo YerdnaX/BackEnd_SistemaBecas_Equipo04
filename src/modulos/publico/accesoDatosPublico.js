@@ -41,7 +41,9 @@ export async function listarNoticiasPublicadas({ limite } = {}) {
   const topSql = limite ? `TOP ${Number(limite)}` : '';
   const resultado = await pool.request().query(`
     SELECT ${topSql} IdNoticia, Titulo, Contenido, PublicoDestino, FechaPublicacion
-    FROM dbo.Noticias WHERE Estado = 'PUBLICADA'
+    FROM dbo.Noticias
+    WHERE Estado = 'PUBLICADA' AND PublicoDestino IN ('GENERAL','TODOS')
+      AND FechaPublicacion <= SYSUTCDATETIME()
     ORDER BY FechaPublicacion DESC
   `);
   return resultado.recordset;

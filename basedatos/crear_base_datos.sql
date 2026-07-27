@@ -171,16 +171,39 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.Puestos', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Puestos (
+        IdPuesto INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL UNIQUE,
+        Descripcion NVARCHAR(300) NULL,
+        Activo BIT NOT NULL DEFAULT 1
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.Departamentos', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.Departamentos (
+        IdDepartamento INT IDENTITY(1,1) PRIMARY KEY,
+        Nombre NVARCHAR(100) NOT NULL UNIQUE,
+        Descripcion NVARCHAR(300) NULL,
+        Activo BIT NOT NULL DEFAULT 1
+    );
+END
+GO
+
 IF OBJECT_ID(N'dbo.Empleados', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.Empleados (
         IdEmpleado INT IDENTITY(1,1) PRIMARY KEY,
         IdUsuario INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
-        NumeroEmpleado NVARCHAR(30) NULL,
-        Puesto NVARCHAR(100) NULL,
-        Departamento NVARCHAR(100) NULL,
+        NumeroEmpleado NVARCHAR(30) NOT NULL UNIQUE,
+        IdPuesto INT NULL FOREIGN KEY REFERENCES dbo.Puestos(IdPuesto),
+        IdDepartamento INT NULL FOREIGN KEY REFERENCES dbo.Departamentos(IdDepartamento),
         Activo BIT NOT NULL DEFAULT 1,
-        FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+        FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
 GO
@@ -800,10 +823,26 @@ BEGIN
     CREATE TABLE dbo.FormalizacionesBeca (
         IdFormalizacion INT IDENTITY(1,1) PRIMARY KEY,
         IdExpediente INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
+        IdResolucion INT NOT NULL FOREIGN KEY REFERENCES dbo.ResolucionesBeca(IdResolucion),
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (Estado IN ('PENDIENTE','GENERADA','ACEPTADA','RECHAZADA')),
+        VersionCondiciones NVARCHAR(30) NOT NULL DEFAULT '1.0',
+        Condiciones NVARCHAR(MAX) NOT NULL,
         FechaGeneracion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         FechaAceptacion DATETIME2 NULL,
         Observacion NVARCHAR(400) NULL
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.AceptacionesFormalizacion', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AceptacionesFormalizacion (
+        IdAceptacion INT IDENTITY(1,1) PRIMARY KEY,
+        IdFormalizacion INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.FormalizacionesBeca(IdFormalizacion),
+        IdUsuario INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
+        VersionCondiciones NVARCHAR(30) NOT NULL,
+        DireccionIp VARCHAR(64) NULL,
+        FechaAceptacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
 GO
@@ -829,6 +868,7 @@ BEGIN
         IdExpediente INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
         IdTipoBeca INT NOT NULL FOREIGN KEY REFERENCES dbo.TiposBeca(IdTipoBeca),
         Porcentaje DECIMAL(5,2) NOT NULL CHECK (Porcentaje BETWEEN 0 AND 100),
+        Periodo NVARCHAR(30) NOT NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE_ACTIVACION'
             CHECK (Estado IN ('PENDIENTE_ACTIVACION','ACTIVA','SUSPENDIDA','FINALIZADA','CANCELADA')),
         FechaInicio DATETIME2 NULL,
@@ -844,12 +884,29 @@ BEGIN
     CREATE TABLE dbo.ActivacionesFinancieras (
         IdActivacionFinanciera INT IDENTITY(1,1) PRIMARY KEY,
         IdBecaActiva INT NOT NULL FOREIGN KEY REFERENCES dbo.BecasActivas(IdBecaActiva),
+        Periodo NVARCHAR(30) NOT NULL,
+        Porcentaje DECIMAL(5,2) NOT NULL CHECK (Porcentaje BETWEEN 0 AND 100),
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (Estado IN ('PENDIENTE','VERIFICADA','RECHAZADA')),
         Monto DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (Monto >= 0),
         Referencia NVARCHAR(100) NULL,
         IdEmpleadoFinanzas INT NULL FOREIGN KEY REFERENCES dbo.Empleados(IdEmpleado),
         FechaRegistro DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-        FechaVerificacion DATETIME2 NULL
+        FechaVerificacion DATETIME2 NULL,
+        DetalleError NVARCHAR(500) NULL,
+        CONSTRAINT UQ_ActivacionesFinancieras_BecaPeriodo UNIQUE (IdBecaActiva, Periodo)
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.AsientosFinancieros', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.AsientosFinancieros (
+        IdAsientoFinanciero INT IDENTITY(1,1) PRIMARY KEY,
+        IdActivacionFinanciera INT NOT NULL FOREIGN KEY REFERENCES dbo.ActivacionesFinancieras(IdActivacionFinanciera),
+        Referencia NVARCHAR(100) NOT NULL,
+        Monto DECIMAL(12,2) NOT NULL DEFAULT 0 CHECK (Monto >= 0),
+        Estado VARCHAR(20) NOT NULL CHECK (Estado IN ('APLICADO','VERIFICADO','FALLIDO')),
+        Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
 GO
@@ -859,11 +916,30 @@ BEGIN
     CREATE TABLE dbo.ValidacionesAcademicas (
         IdValidacionAcademica INT IDENTITY(1,1) PRIMARY KEY,
         IdExpediente INT NOT NULL FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
+        Periodo NVARCHAR(30) NOT NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (Estado IN ('PENDIENTE','VALIDADA','RECHAZADA')),
         Detalle NVARCHAR(400) NULL,
         IdEmpleadoRegistro INT NULL FOREIGN KEY REFERENCES dbo.Empleados(IdEmpleado),
-        FechaValidacion DATETIME2 NULL
+        FechaValidacion DATETIME2 NULL,
+        CONSTRAINT UQ_ValidacionesAcademicas_ExpedientePeriodo UNIQUE (IdExpediente, Periodo)
     );
+END
+GO
+
+IF OBJECT_ID(N'dbo.ActualizacionesExpediente', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.ActualizacionesExpediente (
+        IdActualizacion INT IDENTITY(1,1) PRIMARY KEY,
+        IdExpediente INT NOT NULL FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
+        IdUsuario INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
+        Campo NVARCHAR(80) NOT NULL,
+        ValorAnterior NVARCHAR(500) NULL,
+        ValorNuevo NVARCHAR(500) NULL,
+        RequiereRevision BIT NOT NULL DEFAULT 0,
+        Revisada BIT NOT NULL DEFAULT 0,
+        Fecha DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_ActualizacionesExpediente_Expediente ON dbo.ActualizacionesExpediente(IdExpediente, Fecha);
 END
 GO
 
@@ -910,7 +986,8 @@ BEGIN
         Nivel VARCHAR(20) NOT NULL DEFAULT 'INFO' CHECK (Nivel IN ('INFO','ADVERTENCIA','CRITICO')),
         Estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA' CHECK (Estado IN ('ABIERTA','ATENDIDA')),
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-        FechaAtencion DATETIME2 NULL
+        FechaAtencion DATETIME2 NULL,
+        ObservacionCierre NVARCHAR(500) NULL
     );
 END
 GO
@@ -920,6 +997,7 @@ BEGIN
     CREATE TABLE dbo.JustificacionesCurso (
         IdJustificacion INT IDENTITY(1,1) PRIMARY KEY,
         IdBecaActiva INT NOT NULL FOREIGN KEY REFERENCES dbo.BecasActivas(IdBecaActiva),
+        Periodo NVARCHAR(30) NOT NULL,
         Curso NVARCHAR(150) NOT NULL,
         Motivo NVARCHAR(500) NOT NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (Estado IN ('PENDIENTE','APROBADA','RECHAZADA')),
@@ -950,6 +1028,7 @@ BEGIN
         IdResponsable INT NULL FOREIGN KEY REFERENCES dbo.Empleados(IdEmpleado),
         FechaProgramada DATETIME2 NOT NULL,
         Direccion NVARCHAR(300) NOT NULL,
+        Observaciones NVARCHAR(600) NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'PROGRAMADA' CHECK (Estado IN ('PROGRAMADA','REALIZADA','CANCELADA')),
         FechaRealizada DATETIME2 NULL
     );
@@ -975,7 +1054,7 @@ BEGIN
         IdConsulta INT IDENTITY(1,1) PRIMARY KEY,
         IdUsuario INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
         Asunto NVARCHAR(150) NOT NULL,
-        Mensaje NVARCHAR(1000) NOT NULL,
+        Mensaje NVARCHAR(1000) NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA' CHECK (Estado IN ('ABIERTA','RESPONDIDA','CERRADA')),
         IdResponsable INT NULL FOREIGN KEY REFERENCES dbo.Empleados(IdEmpleado),
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
@@ -1014,7 +1093,7 @@ END
 GO
 
 -- =====================================================================
--- 7. RENOVACION, APELACION, SUSPENSION Y CIERRE (segmento 03, preparadas)
+-- 7. RENOVACION (segmento 02) Y APELACION, SUSPENSION Y CIERRE (segmento 03)
 -- =====================================================================
 
 IF OBJECT_ID(N'dbo.RenovacionesBeca', N'U') IS NULL
@@ -1024,9 +1103,41 @@ BEGIN
         IdBecaActiva INT NOT NULL FOREIGN KEY REFERENCES dbo.BecasActivas(IdBecaActiva),
         Periodo NVARCHAR(30) NOT NULL,
         Estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE' CHECK (Estado IN ('PENDIENTE','APROBADA','RECHAZADA')),
+        EstadoProceso VARCHAR(25) NOT NULL DEFAULT 'BORRADOR'
+            CHECK (EstadoProceso IN ('BORRADOR','EN_REEVALUACION','RESUELTA')),
+        ResultadoDetalle VARCHAR(20) NULL
+            CHECK (ResultadoDetalle IS NULL OR ResultadoDetalle IN ('RENOVADA','REDUCIDA','SUSPENDIDA','DENEGADA')),
+        DatosActualizados NVARCHAR(MAX) NULL,
         FechaSolicitud DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         FechaResolucion DATETIME2 NULL,
         IdResueltoPor INT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario)
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.PeriodosRenovacion', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PeriodosRenovacion (
+        IdPeriodoRenovacion INT IDENTITY(1,1) PRIMARY KEY,
+        Periodo NVARCHAR(30) NOT NULL UNIQUE,
+        FechaInicio DATETIME2 NOT NULL,
+        FechaFin DATETIME2 NOT NULL,
+        Activo BIT NOT NULL DEFAULT 1,
+        CHECK (FechaFin > FechaInicio)
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.EvaluacionesRenovacion', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.EvaluacionesRenovacion (
+        IdEvaluacionRenovacion INT IDENTITY(1,1) PRIMARY KEY,
+        IdRenovacion INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.RenovacionesBeca(IdRenovacion),
+        IdEvaluador INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
+        CumpleAcademico BIT NOT NULL,
+        CumpleSocioeconomico BIT NOT NULL,
+        Observaciones NVARCHAR(700) NULL,
+        FechaEvaluacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
 END
 GO
@@ -1049,6 +1160,7 @@ BEGIN
         IdResolucionRenovacion INT IDENTITY(1,1) PRIMARY KEY,
         IdRenovacion INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.RenovacionesBeca(IdRenovacion),
         Resultado VARCHAR(20) NOT NULL CHECK (Resultado IN ('APROBADA','RECHAZADA')),
+        ResultadoDetalle VARCHAR(20) NOT NULL CHECK (ResultadoDetalle IN ('RENOVADA','REDUCIDA','SUSPENDIDA','DENEGADA')),
         PorcentajeNuevo DECIMAL(5,2) NULL,
         Motivo NVARCHAR(500) NULL,
         FechaEmision DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
@@ -1219,8 +1331,8 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Roles WHERE Codigo = 'ADMINISTRADOR')
     INSERT INTO dbo.Roles (Codigo, Nombre, Descripcion) VALUES ('ADMINISTRADOR', 'Administrador', 'Administracion general del sistema');
 GO
 
--- Permisos del Segmento 01
-IF NOT EXISTS (SELECT 1 FROM dbo.Permisos)
+-- Permisos acumulados de los Segmentos 01 y 02
+IF NOT EXISTS (SELECT 1 FROM dbo.Permisos WHERE Codigo = 'TIPO_BECA_VER')
 BEGIN
     INSERT INTO dbo.Permisos (Codigo, Nombre) VALUES
         ('TIPO_BECA_VER', 'Ver tipos de beca'),
@@ -1246,6 +1358,33 @@ BEGIN
         ('COMITE_RESOLVER', 'Registrar decisiones de comite'),
         ('RESULTADO_VER_PROPIO', 'Ver resultado propio');
 END
+GO
+
+INSERT INTO dbo.Permisos (Codigo, Nombre)
+SELECT semilla.Codigo, semilla.Nombre
+FROM (VALUES
+    ('FORMALIZACION_GESTIONAR', 'Formalizar beneficio propio'),
+    ('VALIDACION_ACADEMICA_GESTIONAR', 'Gestionar validacion academica'),
+    ('ACTIVACION_FINANCIERA_GESTIONAR', 'Gestionar activacion financiera'),
+    ('BECADO_VER_PROPIO', 'Ver panel y expediente propio'),
+    ('BECADO_EDITAR_PROPIO', 'Actualizar expediente propio'),
+    ('VISITA_GESTIONAR', 'Gestionar visitas domiciliarias'),
+    ('CONSULTA_CREAR_PROPIA', 'Crear y responder consultas propias'),
+    ('CONSULTA_GESTIONAR', 'Gestionar bandeja de consultas'),
+    ('NOTICIA_GESTIONAR', 'Gestionar noticias'),
+    ('SEGUIMIENTO_GESTIONAR', 'Gestionar seguimiento de becados'),
+    ('JUSTIFICACION_CREAR_PROPIA', 'Crear justificaciones propias'),
+    ('JUSTIFICACION_RESOLVER', 'Resolver justificaciones'),
+    ('RENOVACION_CREAR_PROPIA', 'Crear renovaciones propias'),
+    ('RENOVACION_RESOLVER', 'Evaluar y resolver renovaciones'),
+    ('REPORTE_VER', 'Consultar reportes e indicadores'),
+    ('ACTA_VER', 'Consultar y generar actas'),
+    ('USUARIO_GESTIONAR', 'Gestionar usuarios y roles'),
+    ('ROL_GESTIONAR', 'Gestionar roles y permisos'),
+    ('EMPLEADO_GESTIONAR', 'Gestionar empleados'),
+    ('COMITE_MIEMBRO_GESTIONAR', 'Gestionar miembros del comite')
+) AS semilla(Codigo, Nombre)
+WHERE NOT EXISTS (SELECT 1 FROM dbo.Permisos p WHERE p.Codigo = semilla.Codigo);
 GO
 
 -- Relaciones rol-permiso
@@ -1278,6 +1417,48 @@ BEGIN
     INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
     SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r, dbo.Permisos p
     WHERE r.Codigo = 'ADMINISTRADOR';
+END
+GO
+
+INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
+SELECT r.IdRol, p.IdPermiso
+FROM dbo.Roles r CROSS JOIN dbo.Permisos p
+WHERE
+    (
+      (r.Codigo = 'ASPIRANTE' AND p.Codigo IN ('FORMALIZACION_GESTIONAR','CONSULTA_CREAR_PROPIA')) OR
+      (r.Codigo = 'BECADO' AND p.Codigo IN ('BECADO_VER_PROPIO','BECADO_EDITAR_PROPIO','CONSULTA_CREAR_PROPIA',
+          'JUSTIFICACION_CREAR_PROPIA','RENOVACION_CREAR_PROPIA')) OR
+      (r.Codigo = 'TRABAJADORA_SOCIAL' AND p.Codigo IN ('VISITA_GESTIONAR','CONSULTA_GESTIONAR',
+          'SEGUIMIENTO_GESTIONAR','JUSTIFICACION_RESOLVER','RENOVACION_RESOLVER','REPORTE_VER')) OR
+      (r.Codigo = 'FINANZAS' AND p.Codigo = 'ACTIVACION_FINANCIERA_GESTIONAR') OR
+      (r.Codigo = 'REGISTRO_ACADEMICO' AND p.Codigo = 'VALIDACION_ACADEMICA_GESTIONAR') OR
+      (r.Codigo = 'COMITE_BECAS' AND p.Codigo IN ('REPORTE_VER','ACTA_VER')) OR
+      (r.Codigo = 'COORDINADOR_BECAS' AND p.Codigo IN ('REPORTE_VER','ACTA_VER','NOTICIA_GESTIONAR')) OR
+      (r.Codigo = 'ADMINISTRADOR')
+    )
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.RolesPermisos rp
+    WHERE rp.IdRol = r.IdRol AND rp.IdPermiso = p.IdPermiso
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Puestos)
+BEGIN
+    INSERT INTO dbo.Puestos (Nombre, Descripcion) VALUES
+        ('Trabajador social', 'Personal responsable del acompanamiento estudiantil'),
+        ('Analista financiero', 'Personal responsable de aplicar beneficios'),
+        ('Registro academico', 'Personal responsable de validaciones academicas'),
+        ('Administrativo', 'Personal administrativo general');
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Departamentos)
+BEGIN
+    INSERT INTO dbo.Departamentos (Nombre, Descripcion) VALUES
+        ('Bienestar Estudiantil', 'Gestion de becas y acompanamiento'),
+        ('Finanzas', 'Gestion financiera institucional'),
+        ('Registro', 'Registro academico'),
+        ('Tecnologias de Informacion', 'Soporte y administracion del sistema');
 END
 GO
 
@@ -1315,6 +1496,10 @@ IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'TOKEN_REC
     INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('TOKEN_RECUPERACION_HORAS', '24', 'Horas de vigencia del token de recuperacion de contrasena', 'NUMERO');
 IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'TAMANO_MAXIMO_ARCHIVO_MB')
     INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('TAMANO_MAXIMO_ARCHIVO_MB', '8', 'Tamano maximo de archivo cargado en megabytes', 'NUMERO');
+IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'PROMEDIO_MINIMO_PERMANENCIA')
+    INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('PROMEDIO_MINIMO_PERMANENCIA', '70', 'Promedio minimo provisional para permanencia y renovacion', 'NUMERO');
+IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'CREDITOS_MINIMOS_PERMANENCIA')
+    INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('CREDITOS_MINIMOS_PERMANENCIA', '9', 'Creditos minimos provisionales por periodo', 'NUMERO');
 
 -- La noticia publica de ejemplo (dato semilla) requiere un autor (Usuarios.IdAutor
 -- es NOT NULL) y por eso no puede insertarse aqui, antes de que exista un usuario.

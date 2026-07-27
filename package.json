@@ -1,7 +1,7 @@
 {
   "name": "sgbe-backend",
   "version": "1.0.0",
-  "description": "API REST del Sistema de Gestion de Becas Estudiantiles (SGBE) - Segmento 01",
+  "description": "API REST del Sistema de Gestion de Becas Estudiantiles (SGBE) - Segmentos 01 y 02",
   "type": "module",
   "main": "src/servidor.js",
   "scripts": {
@@ -20,7 +20,7 @@
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "mssql": "^11.0.1",
-    "nodemailer": "^6.9.14"
+    "nodemailer": "^9.0.3"
   },
   "engines": {
     "node": ">=18.0.0"

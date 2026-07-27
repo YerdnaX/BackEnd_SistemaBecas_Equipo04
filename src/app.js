@@ -15,6 +15,10 @@ import rutasSolicitudes from './modulos/solicitudes/rutasSolicitudes.js';
 import rutasExpedientes from './modulos/expedientes/rutasExpedientes.js';
 import rutasComite from './modulos/comite/rutasComite.js';
 import rutasNotificaciones from './modulos/notificaciones/rutasNotificaciones.js';
+import rutasBeneficios from './modulos/segmentoDos/rutasBeneficios.js';
+import rutasComunicaciones from './modulos/segmentoDos/rutasComunicaciones.js';
+import rutasSeguimiento from './modulos/segmentoDos/rutasSeguimiento.js';
+import rutasAdministracion from './modulos/segmentoDos/rutasAdministracion.js';
 
 export function crearAplicacion() {
   const app = express();
@@ -52,6 +56,10 @@ export function crearAplicacion() {
   enrutadorV1.use('/expedientes', rutasExpedientes);
   enrutadorV1.use('/comite', rutasComite);
   enrutadorV1.use('/notificaciones', rutasNotificaciones);
+  enrutadorV1.use(rutasBeneficios);
+  enrutadorV1.use(rutasComunicaciones);
+  enrutadorV1.use(rutasSeguimiento);
+  enrutadorV1.use(rutasAdministracion);
 
   app.use('/api/v1', enrutadorV1);
 

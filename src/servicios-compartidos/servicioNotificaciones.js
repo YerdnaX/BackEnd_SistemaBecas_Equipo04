@@ -36,3 +36,13 @@ export async function marcarNotificacionLeida(idUsuario, idNotificacion) {
       WHERE IdNotificacion = @idNotificacion AND IdUsuario = @idUsuario
     `);
 }
+
+export async function marcarTodasLeidas(idUsuario) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idUsuario', sql.Int, idUsuario)
+    .query(`
+      UPDATE dbo.Notificaciones SET Leida = 1, FechaLectura = COALESCE(FechaLectura, SYSUTCDATETIME())
+      WHERE IdUsuario = @idUsuario AND Leida = 0
+    `);
+}
