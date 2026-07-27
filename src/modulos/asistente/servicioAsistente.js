@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { configuracion } from '../../configuracion/variablesEntorno.js';
 import { ErrorAplicacion, errorNoEncontrado, errorValidacion } from '../../utilidades/errorAplicacion.js';
+import { TEXTO_REGLAMENTO_BECAS } from './conocimiento/reglamentoBecas.js';
+import { TEXTO_DOCUMENTOS_REQUERIDOS } from './conocimiento/documentosRequeridos.js';
 
 // Conversaciones en memoria (no persistentes): idConversacion -> { mensajes, ultimaActividad }.
 // Alcanza para un chatbot de soporte sin historial entre reinicios del
@@ -11,14 +13,28 @@ const MENSAJE_MAXIMO = 1000;
 const MAXIMO_TURNOS_HISTORIAL = 12; // pares usuario/asistente reenviados como contexto
 const MINUTOS_INACTIVIDAD_EXPIRA = 60;
 
+const CONOCIMIENTO_REFERENCIA = [
+  '=== REGLAMENTO DEL SISTEMA DE BECAS DEL CUC (La Gaceta N.º 189, 05/10/2022) ===',
+  TEXTO_REGLAMENTO_BECAS,
+  '',
+  '=== DOCUMENTOS REQUERIDOS PARA SOLICITAR LA BECA SOCIOECONÓMICA ===',
+  TEXTO_DOCUMENTOS_REQUERIDOS
+].join('\n');
+
 const INSTRUCCION_SISTEMA = [
-  'Eres el asistente virtual del Sistema de Gestión de Becas Estudiantiles (SGBE) de la Universidad CUC.',
-  'Respondes en español, de forma breve, clara y cordial, sobre el proceso de becas: convocatorias, requisitos,',
-  'solicitudes, documentos, subsanaciones, evaluación, comité, resolución, formalización, seguimiento, renovación,',
-  'justificaciones, apelaciones y suspensión o cancelación.',
-  'Si no tienes información suficiente o la pregunta no tiene relación con el sistema de becas, dilo con honestidad',
-  'y sugiere contactar a la Oficina de Becas; nunca inventes plazos, montos ni políticas.'
-].join(' ');
+  'Eres el asistente virtual del Sistema de Gestión de Becas Estudiantiles (SGBE) del Colegio Universitario de Cartago (CUC).',
+  'Respondes en español, de forma breve, clara y cordial.',
+  'Usa ÚNICAMENTE la información del reglamento y la lista de documentos incluida más abajo (delimitada con "===")',
+  'para responder sobre becas: tipos de beca, montos o porcentajes de exoneración, requisitos, documentos,',
+  'plazos, deberes de la persona becada, causales de suspensión o pérdida de la beca, apoyos económicos',
+  'extraordinarios y el proceso de solicitud. Cuando corresponda, cita el número de artículo (por ejemplo',
+  '"según el Artículo 6").',
+  'Si la pregunta no se puede responder con ese contenido, dilo con honestidad y sugiere contactar a la Unidad',
+  'de Trabajo Social (Jennifer Araya Pérez, jarayap@cuc.ac.cr, tel. 2550-6282 / 2552-6231, WhatsApp 8359-4035);',
+  'nunca inventes artículos, montos, plazos ni políticas que no estén en el texto de referencia.',
+  '',
+  CONOCIMIENTO_REFERENCIA
+].join('\n');
 
 function proveedorConfigurado() {
   return Boolean(configuracion.asistenteIA.apiKey);
