@@ -53,6 +53,16 @@ export const configuracion = {
     otpIntentosMaximos: obtenerNumero(process.env.OTP_INTENTOS_MAXIMOS, 5),
     tokenActivacionHoras: obtenerNumero(process.env.TOKEN_ACTIVACION_HORAS, 24),
     tokenRecuperacionHoras: obtenerNumero(process.env.TOKEN_RECUPERACION_HORAS, 24)
+  },
+  asistenteIA: {
+    // Proveedor de IA compatible con el protocolo "Chat Completions" (mismo
+    // formato de OpenAI). Por defecto apunta a GitHub Models, pero puede
+    // apuntar a Google Gemini, Groq, OpenAI u otro cambiando estas 3 variables,
+    // sin tocar código. La API key NUNCA se expone al frontend.
+    apiKey: process.env.ASISTENTE_IA_API_KEY || '',
+    urlBase: process.env.ASISTENTE_IA_URL || 'https://models.github.ai/inference/chat/completions',
+    modelo: process.env.ASISTENTE_IA_MODELO || 'openai/gpt-4o-mini',
+    timeoutMs: obtenerNumero(process.env.ASISTENTE_IA_TIMEOUT_MS, 20000)
   }
 };
 

@@ -25,6 +25,7 @@ import rutasCierre from './modulos/cierre/rutasCierre.js';
 import rutasConfiguracion from './modulos/configuracion-sistema/rutasConfiguracion.js';
 import rutasSeguridad from './modulos/seguridad/rutasSeguridad.js';
 import rutasChatbot from './modulos/chatbot/rutasChatbot.js';
+import rutasAsistente from './modulos/asistente/rutasAsistente.js';
 
 export function crearAplicacion() {
   const app = express();
@@ -62,6 +63,15 @@ export function crearAplicacion() {
   enrutadorV1.use('/expedientes', rutasExpedientes);
   enrutadorV1.use('/comite', rutasComite);
   enrutadorV1.use('/notificaciones', rutasNotificaciones);
+  // IMPORTANTE: rutasBeneficios/Comunicaciones/Seguimiento/Administracion se
+  // montan sin prefijo (sus propias rutas ya incluyen el path completo) y
+  // cada una aplica `rutas.use(requiereSesion)` a NIVEL DE ROUTER. Como ese
+  // router queda montado en "/", intercepta con 401 cualquier ruta pública
+  // que se registre despues de el, aunque esa ruta no exista dentro de ese
+  // router. Por eso las rutas públicas (chatbot, asistente) deben registrarse
+  // ANTES de este bloque.
+  enrutadorV1.use('/chatbot', rutasChatbot);
+  enrutadorV1.use('/asistente', rutasAsistente);
   enrutadorV1.use(rutasBeneficios);
   enrutadorV1.use(rutasComunicaciones);
   enrutadorV1.use(rutasSeguimiento);
@@ -71,7 +81,6 @@ export function crearAplicacion() {
   enrutadorV1.use('/expedientes', rutasCierre);
   enrutadorV1.use('/configuracion', rutasConfiguracion);
   enrutadorV1.use('/seguridad', rutasSeguridad);
-  enrutadorV1.use('/chatbot', rutasChatbot);
 
   app.use('/api/v1', enrutadorV1);
 
