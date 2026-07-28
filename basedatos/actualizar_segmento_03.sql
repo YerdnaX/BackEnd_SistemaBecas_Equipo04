@@ -8,6 +8,14 @@ IF COL_LENGTH('dbo.EnviosCorreo', 'ContenidoHtml') IS NULL
     ALTER TABLE dbo.EnviosCorreo ADD ContenidoHtml NVARCHAR(MAX) NULL;
 GO
 
+-- Correccion F29: "pasar a analisis" no tenia ningun efecto observable
+-- (dejaba Estado en 'EN_REVISION', el mismo valor que ya tenia). Se anade
+-- una marca de tiempo propia en vez de tocar el CHECK de Estado, para no
+-- requerir SQL dinamico al ubicar el nombre del constraint existente.
+IF COL_LENGTH('dbo.InvestigacionesBeca', 'FechaAnalisis') IS NULL
+    ALTER TABLE dbo.InvestigacionesBeca ADD FechaAnalisis DATETIME2 NULL;
+GO
+
 INSERT INTO dbo.Permisos (Codigo, Nombre)
 SELECT semilla.Codigo, semilla.Nombre
 FROM (VALUES
@@ -31,6 +39,7 @@ FROM dbo.Roles r CROSS JOIN dbo.Permisos p
 WHERE
     (
       (r.Codigo = 'BECADO' AND p.Codigo IN ('APELACION_CREAR_PROPIA','DESCARGO_CREAR_PROPIO')) OR
+      (r.Codigo = 'ASPIRANTE' AND p.Codigo IN ('APELACION_CREAR_PROPIA')) OR
       (r.Codigo = 'TRABAJADORA_SOCIAL' AND p.Codigo IN ('APELACION_LISTAR','APELACION_ASIGNAR','APELACION_RESOLVER','DISCIPLINARIO_GESTIONAR',
           'EXPEDIENTE_CERRAR','CHATBOT_GESTIONAR')) OR
       (r.Codigo = 'COORDINADOR_BECAS' AND p.Codigo IN ('APELACION_LISTAR','AUDITORIA_VER')) OR
