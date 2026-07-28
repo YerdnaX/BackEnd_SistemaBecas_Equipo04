@@ -144,7 +144,9 @@ export async function iniciarSesion({ correo, contrasena }, contexto) {
   const contrasenaValida = usuario ? await bcrypt.compare(contrasena || '', usuario.ContrasenaHash) : false;
 
   if (!usuario || !contrasenaValida) {
-    if (usuario) await datosAuth.incrementarIntentosFallidos(usuario.IdUsuario);
+    if (usuario && configuracion.autenticacion.bloqueoIntentosFallidosHabilitado) {
+      await datosAuth.incrementarIntentosFallidos(usuario.IdUsuario);
+    }
     throw errorNoAutorizado('Correo o contraseña incorrectos.');
   }
 
