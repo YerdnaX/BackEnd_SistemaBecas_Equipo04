@@ -52,11 +52,15 @@ export const eliminarDocumento = asincrono(async (req, res) => {
 
 export const obtenerArchivoDocumento = asincrono(async (req, res) => {
   const archivo = await servicio.obtenerArchivoDocumento(Number(req.params.id), Number(req.params.idDocumento), req.usuario);
+  const contenidoBase64 = archivo.Contenido
+    ? `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
+    : null;
   enviarExito(res, {
     datos: {
       nombreOriginal: archivo.NombreOriginal,
       tipoMime: archivo.TipoMime,
-      contenidoBase64: `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
+      contenidoBase64,
+      urlExterna: archivo.UrlExterna || null
     }
   });
 });

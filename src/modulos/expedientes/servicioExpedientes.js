@@ -76,6 +76,13 @@ export async function revisarDocumento(idExpediente, idDocumento, { estado, obse
   return obtenerExpediente(idExpediente);
 }
 
+export async function obtenerArchivoDocumentoExpediente(idExpediente, idDocumento) {
+  await obtenerExpedienteOFallar(idExpediente);
+  const archivo = await datos.obtenerArchivoDocumentoDeExpediente(idExpediente, idDocumento);
+  if (!archivo || !archivo.Activo) throw errorNoEncontrado('El archivo solicitado no existe.');
+  return archivo;
+}
+
 export async function solicitarSubsanacion(idExpediente, { observacion }, idUsuario) {
   const expediente = await obtenerExpedienteOFallar(idExpediente);
   if (expediente.Estado !== 'EN_REVISION_DOCUMENTAL') {

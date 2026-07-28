@@ -153,6 +153,21 @@ export async function obtenerDocumentoDeExpediente(idExpediente, idDocumento) {
   return resultado.recordset[0] || null;
 }
 
+export async function obtenerArchivoDocumentoDeExpediente(idExpediente, idDocumento) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('idExpediente', sql.Int, idExpediente)
+    .input('idDocumento', sql.Int, idDocumento)
+    .query(`
+      SELECT a.IdArchivo, a.NombreOriginal, a.TipoMime, a.Extension, a.TamanoBytes, a.Contenido, a.UrlExterna, a.Activo
+      FROM dbo.DocumentosSolicitud d
+      JOIN dbo.Archivos a ON a.IdArchivo = d.IdArchivo
+      WHERE d.IdDocumentoSolicitud = @idDocumento AND d.Activo = 1
+        AND d.IdSolicitud = (SELECT IdSolicitud FROM dbo.Expedientes WHERE IdExpediente = @idExpediente)
+    `);
+  return resultado.recordset[0] || null;
+}
+
 export async function registrarRevisionDocumento({ idDocumentoSolicitud, idRevisor, estadoAnterior, estadoNuevo, observacion }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);

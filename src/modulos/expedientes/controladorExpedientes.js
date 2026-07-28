@@ -30,6 +30,21 @@ export const revisarDocumento = asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Revisión registrada.', datos: expediente });
 });
 
+export const obtenerArchivoDocumento = asincrono(async (req, res) => {
+  const archivo = await servicio.obtenerArchivoDocumentoExpediente(Number(req.params.id), Number(req.params.idDocumento));
+  const contenidoBase64 = archivo.Contenido
+    ? `data:${archivo.TipoMime};base64,${archivo.Contenido.toString('base64')}`
+    : null;
+  enviarExito(res, {
+    datos: {
+      nombreOriginal: archivo.NombreOriginal,
+      tipoMime: archivo.TipoMime,
+      contenidoBase64,
+      urlExterna: archivo.UrlExterna || null
+    }
+  });
+});
+
 export const solicitarSubsanacion = asincrono(async (req, res) => {
   const expediente = await servicio.solicitarSubsanacion(Number(req.params.id), req.body, req.usuario.idUsuario);
   enviarExito(res, { mensaje: 'Subsanación solicitada.', datos: expediente });
