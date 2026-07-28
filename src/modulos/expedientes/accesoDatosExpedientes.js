@@ -129,9 +129,11 @@ export async function listarDocumentosExpediente(idExpediente) {
   const resultado = await pool.request()
     .input('id', sql.Int, idExpediente)
     .query(`
-      SELECT d.*, r.Nombre AS NombreRequisito, r.Obligatorio
+      SELECT d.*, r.Nombre AS NombreRequisito, r.Obligatorio,
+        a.NombreOriginal, a.TipoMime, a.TamanoBytes
       FROM dbo.DocumentosSolicitud d
       LEFT JOIN dbo.RequisitosConvocatoria r ON r.IdRequisito = d.IdRequisito
+      JOIN dbo.Archivos a ON a.IdArchivo = d.IdArchivo
       WHERE d.Activo = 1 AND d.IdSolicitud = (SELECT IdSolicitud FROM dbo.Expedientes WHERE IdExpediente = @id)
       ORDER BY d.FechaCarga DESC
     `);
