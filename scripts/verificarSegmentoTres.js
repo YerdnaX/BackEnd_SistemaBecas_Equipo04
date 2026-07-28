@@ -31,6 +31,17 @@ const verificaciones = [
     `
   },
   {
+    nombre: 'Rol ASPIRANTE con permiso para presentar apelacion propia',
+    consulta: `
+      SELECT CASE WHEN COUNT(*) = 1 THEN 1 ELSE 0 END AS Cumple
+      FROM dbo.RolesPermisos rp
+      JOIN dbo.Roles r ON r.IdRol = rp.IdRol
+      JOIN dbo.Permisos p ON p.IdPermiso = rp.IdPermiso
+      WHERE r.Codigo = 'ASPIRANTE'
+        AND p.Codigo IN ('APELACION_CREAR_PROPIA')
+    `
+  },
+  {
     nombre: 'Rol TRABAJADORA_SOCIAL con permisos operativos de Segmento 03',
     consulta: `
       SELECT CASE WHEN COUNT(*) = 6 THEN 1 ELSE 0 END AS Cumple
