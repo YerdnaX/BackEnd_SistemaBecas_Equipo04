@@ -195,6 +195,20 @@ export async function enviarCorreo({ idUsuario = null, correoDestino, asunto, ti
   }
 }
 
+export async function enviarCorreoPrueba(correoDestino) {
+  return enviarCorreo({
+    idUsuario: null,
+    correoDestino,
+    asunto: 'Prueba de configuracion de correo - SGBE CUC',
+    tipoMensaje: 'CORREO_PRUEBA',
+    contenidoHtml: `
+      <h2>Correo de prueba</h2>
+      <p>Este mensaje confirma que la configuracion de correo del sistema SGBE CUC esta operativa.</p>
+      <p>Fecha UTC: ${new Date().toISOString()}</p>
+    `
+  });
+}
+
 // F34: reintenta los envios que quedaron en estado FALLIDO, hasta el
 // maximo de intentos definido en NOTIFICACION_REINTENTOS_MAXIMOS.
 // Es idempotente: cada intento exitoso deja el registro en ENVIADO y no
