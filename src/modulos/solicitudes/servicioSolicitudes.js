@@ -335,6 +335,7 @@ export async function obtenerResultado(idSolicitud, usuarioActual) {
     disponible: Boolean(resolucion),
     resolucion: resolucion
       ? {
+          idResolucion: resolucion.IdResolucion,
           numeroResolucion: resolucion.NumeroResolucion,
           tipoResultado: resolucion.TipoResultado,
           porcentajeBeca: resolucion.PorcentajeBeca,

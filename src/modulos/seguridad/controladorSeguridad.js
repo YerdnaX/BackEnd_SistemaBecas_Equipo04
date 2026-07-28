@@ -18,6 +18,11 @@ export const eventos = asincrono(async (req, res) => {
   enviarExito(res, { datos });
 });
 
+export const marcarEventoRevisado = asincrono(async (req, res) => {
+  const resultado = await servicio.marcarEventoRevisado(Number(req.params.id), req.usuario.idUsuario);
+  enviarExito(res, { mensaje: 'Evento marcado como revisado.', datos: resultado });
+});
+
 export const sesionesActivas = asincrono(async (req, res) => {
   enviarExito(res, { datos: await servicio.listarSesionesActivas() });
 });

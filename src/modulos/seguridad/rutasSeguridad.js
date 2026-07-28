@@ -14,6 +14,7 @@ rutas.delete('/mis-sesiones/:id', controlador.revocarMiSesion);
 // Auditoria y monitoreo administrativo: requiere permiso explicito.
 rutas.get('/auditoria', requierePermiso('AUDITORIA_VER'), controlador.auditoria);
 rutas.get('/eventos', requierePermiso('AUDITORIA_VER'), controlador.eventos);
+rutas.patch('/eventos/:id/revisado', requierePermiso('AUDITORIA_VER'), controlador.marcarEventoRevisado);
 rutas.get('/sesiones', requierePermiso('AUDITORIA_VER'), controlador.sesionesActivas);
 rutas.delete('/sesiones/:id', requierePermiso('AUDITORIA_VER'), controlador.revocarSesionAdmin);
 

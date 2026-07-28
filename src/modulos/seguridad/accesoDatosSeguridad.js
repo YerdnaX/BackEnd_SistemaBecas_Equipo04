@@ -45,6 +45,21 @@ export async function listarEventosSeguridad({ nivel, pagina = 1, tamanoPagina =
   return resultado.recordset;
 }
 
+export async function obtenerEventoSeguridadPorId(idEvento) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('id', sql.Int, idEvento)
+    .query('SELECT * FROM dbo.EventosSeguridad WHERE IdEventoSeguridad = @id');
+  return resultado.recordset[0] || null;
+}
+
+export async function marcarEventoSeguridadRevisado(idEvento) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('id', sql.Int, idEvento)
+    .query('UPDATE dbo.EventosSeguridad SET Revisado = 1 WHERE IdEventoSeguridad = @id');
+}
+
 export async function listarSesionesPropias(idUsuario) {
   const pool = await obtenerPool();
   const resultado = await pool.request()

@@ -106,9 +106,12 @@ export async function listarDescargos(idInvestigacion) {
 
 export async function pasarAAnalisis(idInvestigacion) {
   const pool = await obtenerPool();
+  // Nota: Estado permanece en 'EN_REVISION' (el CHECK de la tabla no admite
+  // un valor 'EN_ANALISIS'). El paso "pasar a analisis" ahora queda
+  // registrado de forma observable en FechaAnalisis.
   await pool.request()
     .input('id', sql.Int, idInvestigacion)
-    .query(`UPDATE dbo.InvestigacionesBeca SET Estado = 'EN_REVISION' WHERE IdInvestigacion = @id`);
+    .query(`UPDATE dbo.InvestigacionesBeca SET FechaAnalisis = SYSUTCDATETIME() WHERE IdInvestigacion = @id`);
 }
 
 export async function resolverInvestigacionTransaccion({ idInvestigacion, idBecaActiva, resultadoDb, estadoBecaNuevo, motivo, idResueltoPor }) {

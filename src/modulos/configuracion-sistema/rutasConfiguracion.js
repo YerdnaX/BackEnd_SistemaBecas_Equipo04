@@ -9,6 +9,7 @@ rutas.use(requiereSesion, requierePermiso('CONFIGURACION_GESTIONAR'));
 
 rutas.get('/correo', controlador.obtenerCorreo);
 rutas.put('/correo', controlador.actualizarCorreo);
+rutas.post('/correo/prueba', controlador.enviarPrueba);
 rutas.post('/correo/reintentar', controlador.reintentarCorreos);
 
 rutas.get('/plantillas', controlador.listarPlantillas);

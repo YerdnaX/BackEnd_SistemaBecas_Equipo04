@@ -11,6 +11,14 @@ export const actualizarCorreo = asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Configuración de correo actualizada.', datos });
 });
 
+export const enviarPrueba = asincrono(async (req, res) => {
+  const resultado = await servicio.enviarCorreoDePrueba(req.body.correoDestino, req.usuario.idUsuario);
+  enviarExito(res, {
+    mensaje: resultado.enviado ? 'Correo de prueba enviado.' : 'No se pudo enviar el correo de prueba.',
+    datos: resultado
+  });
+});
+
 export const reintentarCorreos = asincrono(async (req, res) => {
   const resultado = await servicio.reintentarCorreosFallidos(req.usuario.idUsuario);
   enviarExito(res, { mensaje: 'Reintento de correos ejecutado.', datos: resultado });

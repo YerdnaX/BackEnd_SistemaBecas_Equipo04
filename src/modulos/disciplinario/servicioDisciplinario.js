@@ -102,6 +102,7 @@ export async function presentarDescargo(idInvestigacion, { detalle, idArchivo },
 export async function pasarAAnalisis(idInvestigacion, usuario) {
   const investigacion = await obtenerInvestigacionOFallar(idInvestigacion);
   if (investigacion.Estado !== 'EN_REVISION') throw errorConflicto('Solo se puede pasar a análisis un proceso que está en revisión.');
+  if (investigacion.FechaAnalisis) throw errorConflicto('Este proceso ya fue pasado a análisis.');
   await datos.pasarAAnalisis(idInvestigacion);
   await registrarAuditoria({
     idUsuario: usuario.idUsuario,

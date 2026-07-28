@@ -10,6 +10,24 @@ export async function listarEventosSeguridad(filtros) {
   return datos.listarEventosSeguridad(filtros);
 }
 
+export async function marcarEventoRevisado(idEvento, idAdministrador) {
+  const evento = await datos.obtenerEventoSeguridadPorId(idEvento);
+  if (!evento) throw errorNoEncontrado('El evento de seguridad no existe.');
+
+  if (!evento.Revisado) {
+    await datos.marcarEventoSeguridadRevisado(idEvento);
+    await registrarAuditoria({
+      idUsuario: idAdministrador,
+      modulo: 'SEGURIDAD',
+      accion: 'EVENTO_SEGURIDAD_REVISADO',
+      entidad: 'EventoSeguridad',
+      idEntidad: idEvento
+    });
+  }
+
+  return { ...evento, Revisado: true };
+}
+
 export async function listarSesionesPropias(idUsuario) {
   return datos.listarSesionesPropias(idUsuario);
 }

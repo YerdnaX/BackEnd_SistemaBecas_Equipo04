@@ -4,7 +4,7 @@ import { configuracion } from '../../configuracion/variablesEntorno.js';
 import { invalidarCacheParametros } from '../../servicios-compartidos/servicioParametros.js';
 import { renderizarPlantillaPreliminar } from '../../servicios-compartidos/servicioNotificacionesTransaccionales.js';
 import { registrarAuditoria } from '../../servicios-compartidos/servicioAuditoria.js';
-import { reintentarEnviosFallidos } from '../../servicios-compartidos/servicioCorreo.js';
+import { reintentarEnviosFallidos, enviarCorreoPrueba } from '../../servicios-compartidos/servicioCorreo.js';
 
 // --- Correo ---
 // Los secretos (host, usuario, contrasena SMTP) viven unicamente en
@@ -92,6 +92,21 @@ export async function actualizarParametro(clave, valor, idUsuario) {
   invalidarCacheParametros();
   await registrarAuditoria({ idUsuario, modulo: 'CONFIGURACION', accion: 'PARAMETRO_ACTUALIZADO', entidad: 'ConfiguracionSistema', detalle: `${clave}=${valor}` });
   return datos.obtenerParametroPorClave(clave);
+}
+
+export async function enviarCorreoDePrueba(correoDestino, idUsuario) {
+  if (!correoDestino?.trim()) throw errorValidacion('Debe indicar un correo de destino para la prueba.');
+
+  const resultado = await enviarCorreoPrueba(correoDestino.trim());
+
+  await registrarAuditoria({
+    idUsuario,
+    modulo: 'CONFIGURACION',
+    accion: 'CORREO_PRUEBA_ENVIADO',
+    detalle: `${correoDestino.trim()} -> ${resultado.enviado ? 'ENVIADO' : 'FALLIDO'}`
+  });
+
+  return resultado;
 }
 
 export async function reintentarCorreosFallidos(idUsuario) {
