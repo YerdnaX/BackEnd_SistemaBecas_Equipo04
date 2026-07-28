@@ -52,7 +52,10 @@ export const configuracion = {
     otpDuracionMinutos: obtenerNumero(process.env.OTP_DURACION_MINUTOS, 10),
     otpIntentosMaximos: obtenerNumero(process.env.OTP_INTENTOS_MAXIMOS, 5),
     tokenActivacionHoras: obtenerNumero(process.env.TOKEN_ACTIVACION_HORAS, 24),
-    tokenRecuperacionHoras: obtenerNumero(process.env.TOKEN_RECUPERACION_HORAS, 24)
+    tokenRecuperacionHoras: obtenerNumero(process.env.TOKEN_RECUPERACION_HORAS, 24),
+    limiteTasaHabilitado: obtenerBooleano(process.env.AUTENTICACION_RATE_LIMIT_HABILITADO, true),
+    limiteTasaVentanaMs: obtenerNumero(process.env.AUTENTICACION_RATE_LIMIT_VENTANA_MS, 15 * 60 * 1000),
+    limiteTasaMaximo: obtenerNumero(process.env.AUTENTICACION_RATE_LIMIT_MAXIMO, 10)
   },
   asistenteIA: {
     // Proveedor de IA compatible con el protocolo "Chat Completions" (mismo

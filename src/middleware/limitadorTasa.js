@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { configuracion } from '../configuracion/variablesEntorno.js';
 import { enviarError } from '../utilidades/respuestas.js';
 
 function manejadorLimite(req, res) {
@@ -9,13 +10,15 @@ function manejadorLimite(req, res) {
   });
 }
 
-export const limitadorAutenticacion = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  handler: manejadorLimite
-});
+export const limitadorAutenticacion = configuracion.autenticacion.limiteTasaHabilitado
+  ? rateLimit({
+    windowMs: configuracion.autenticacion.limiteTasaVentanaMs,
+    limit: configuracion.autenticacion.limiteTasaMaximo,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: manejadorLimite
+  })
+  : (req, res, next) => next();
 
 // Endpoint público (sin sesión) más expuesto del sistema: el botón de chat
 // del asistente. Sin este límite, cualquiera puede agotar la cuota de
