@@ -36,14 +36,51 @@ export async function obtenerConvocatoriaPublicaPorId(idConvocatoria) {
   return { ...convocatoria.recordset[0], requisitos: requisitos.recordset };
 }
 
-export async function listarNoticiasPublicadas({ limite } = {}) {
+/**
+ * Devuelve el cuatrimestre (periodo) actualmente activo, si existe uno cuya
+ * ventana de fechas cubre el momento presente. Se reutiliza el mismo
+ * catalogo de PeriodosRenovacion que usa el segmento de renovaciones, para
+ * no duplicar el concepto de "cuatrimestre actual" en dos tablas distintas.
+ */
+export async function obtenerCuatrimestreActual() {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().query(`
+    SELECT TOP 1 IdPeriodoRenovacion, Periodo, FechaInicio, FechaFin
+    FROM dbo.PeriodosRenovacion
+    WHERE Activo = 1 AND SYSUTCDATETIME() BETWEEN FechaInicio AND FechaFin
+    ORDER BY FechaInicio DESC
+  `);
+  return resultado.recordset[0] || null;
+}
+
+export async function listarNoticiasPublicadas({ limite, categoria, soloCuatrimestreActual } = {}) {
   const pool = await obtenerPool();
   const topSql = limite ? `TOP ${Number(limite)}` : '';
-  const resultado = await pool.request().query(`
-    SELECT ${topSql} IdNoticia, Titulo, Contenido, PublicoDestino, FechaPublicacion
+  const solicitud = pool.request();
+
+  let filtroCategoria = '';
+  if (categoria) {
+    solicitud.input('categoria', sql.VarChar(20), categoria);
+    filtroCategoria = 'AND Categoria = @categoria';
+  }
+
+  let filtroCuatrimestre = '';
+  if (soloCuatrimestreActual) {
+    const cuatrimestre = await obtenerCuatrimestreActual();
+    if (cuatrimestre) {
+      solicitud.input('inicioCuatrimestre', sql.DateTime2, cuatrimestre.FechaInicio);
+      solicitud.input('finCuatrimestre', sql.DateTime2, cuatrimestre.FechaFin);
+      filtroCuatrimestre = 'AND FechaPublicacion BETWEEN @inicioCuatrimestre AND @finCuatrimestre';
+    }
+  }
+
+  const resultado = await solicitud.query(`
+    SELECT ${topSql} IdNoticia, Titulo, Contenido, PublicoDestino, Categoria, FechaPublicacion
     FROM dbo.Noticias
     WHERE Estado = 'PUBLICADA' AND PublicoDestino IN ('GENERAL','TODOS')
       AND FechaPublicacion <= SYSUTCDATETIME()
+      ${filtroCategoria}
+      ${filtroCuatrimestre}
     ORDER BY FechaPublicacion DESC
   `);
   return resultado.recordset;

@@ -288,10 +288,11 @@ export async function crearNoticia(idAutor, entrada) {
     .input('titulo', sql.NVarChar(200), entrada.titulo)
     .input('contenido', sql.NVarChar(sql.MAX), entrada.contenido)
     .input('publico', sql.VarChar(30), entrada.publicoDestino)
+    .input('categoria', sql.VarChar(20), entrada.categoria || 'GENERAL')
     .input('idAutor', sql.Int, idAutor)
     .query(`
-      INSERT INTO dbo.Noticias (Titulo, Contenido, PublicoDestino, IdAutor)
-      OUTPUT INSERTED.IdNoticia VALUES (@titulo, @contenido, @publico, @idAutor)
+      INSERT INTO dbo.Noticias (Titulo, Contenido, PublicoDestino, Categoria, IdAutor)
+      OUTPUT INSERTED.IdNoticia VALUES (@titulo, @contenido, @publico, @categoria, @idAutor)
     `);
   return resultado.recordset[0].IdNoticia;
 }
@@ -302,9 +303,10 @@ export async function actualizarNoticia(idNoticia, entrada) {
     .input('titulo', sql.NVarChar(200), entrada.titulo)
     .input('contenido', sql.NVarChar(sql.MAX), entrada.contenido)
     .input('publico', sql.VarChar(30), entrada.publicoDestino)
+    .input('categoria', sql.VarChar(20), entrada.categoria || 'GENERAL')
     .query(`
       UPDATE dbo.Noticias SET Titulo = @titulo, Contenido = @contenido,
-        PublicoDestino = @publico, FechaActualizacion = SYSUTCDATETIME()
+        PublicoDestino = @publico, Categoria = @categoria, FechaActualizacion = SYSUTCDATETIME()
       WHERE IdNoticia = @id
       SELECT @@ROWCOUNT AS Filas;
     `);

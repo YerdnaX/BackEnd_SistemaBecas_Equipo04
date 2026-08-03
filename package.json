@@ -13,7 +13,8 @@
     "verificar:segmento3": "node scripts/verificarSegmentoTres.js",
     "crear:administrador": "node scripts/crearAdministrador.js",
     "actualizar:segmento2": "node scripts/aplicarActualizacionSegmentoDos.js",
-    "actualizar:segmento3": "node scripts/aplicarActualizacionSegmentoTres.js"
+    "actualizar:segmento3": "node scripts/aplicarActualizacionSegmentoTres.js",
+    "actualizar:segmento4": "node scripts/aplicarActualizacionSegmentoCuatro.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

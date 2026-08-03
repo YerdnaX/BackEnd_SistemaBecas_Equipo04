@@ -23,12 +23,12 @@ export const crear = asincrono(async (req, res) => {
 });
 
 export const actualizar = asincrono(async (req, res) => {
-  const convocatoria = await servicio.actualizarConvocatoria(Number(req.params.id), req.body);
+  const convocatoria = await servicio.actualizarConvocatoria(Number(req.params.id), req.body, req.usuario.idUsuario);
   enviarExito(res, { mensaje: 'Convocatoria actualizada.', datos: convocatoria });
 });
 
 export const enviarAprobacion = asincrono(async (req, res) => {
-  const convocatoria = await servicio.enviarAprobacion(Number(req.params.id));
+  const convocatoria = await servicio.enviarAprobacion(Number(req.params.id), req.usuario.idUsuario);
   enviarExito(res, { mensaje: 'Convocatoria enviada a aprobación.', datos: convocatoria });
 });
 
@@ -38,7 +38,7 @@ export const aprobar = asincrono(async (req, res) => {
 });
 
 export const publicar = asincrono(async (req, res) => {
-  const convocatoria = await servicio.publicarConvocatoria(Number(req.params.id));
+  const convocatoria = await servicio.publicarConvocatoria(Number(req.params.id), req.usuario.idUsuario);
   enviarExito(res, { mensaje: 'Convocatoria publicada.', datos: convocatoria });
 });
 

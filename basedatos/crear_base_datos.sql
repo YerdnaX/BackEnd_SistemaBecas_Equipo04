@@ -1092,6 +1092,8 @@ BEGIN
         Titulo NVARCHAR(200) NOT NULL,
         Contenido NVARCHAR(MAX) NOT NULL,
         PublicoDestino VARCHAR(30) NOT NULL DEFAULT 'GENERAL' CHECK (PublicoDestino IN ('GENERAL','ASPIRANTE','BECADO')),
+        Categoria VARCHAR(20) NOT NULL DEFAULT 'GENERAL'
+            CHECK (Categoria IN ('ACADEMICA','FINANCIERA','CONVOCATORIA','EVENTO','URGENTE','GENERAL')),
         Estado VARCHAR(20) NOT NULL DEFAULT 'BORRADOR' CHECK (Estado IN ('BORRADOR','PUBLICADA','ARCHIVADA')),
         IdAutor INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
         FechaPublicacion DATETIME2 NULL,
@@ -1099,6 +1101,7 @@ BEGIN
         FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
     );
     CREATE INDEX IX_Noticias_Estado ON dbo.Noticias(Estado, FechaPublicacion);
+    CREATE INDEX IX_Noticias_Categoria ON dbo.Noticias(Categoria);
 END
 GO
 

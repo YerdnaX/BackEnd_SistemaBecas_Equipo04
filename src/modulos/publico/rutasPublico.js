@@ -7,11 +7,12 @@ import * as datos from './accesoDatosPublico.js';
 const rutas = Router();
 
 rutas.get('/inicio', asincrono(async (req, res) => {
-  const [convocatorias, noticias] = await Promise.all([
+  const [convocatorias, noticias, cuatrimestreActual] = await Promise.all([
     datos.listarConvocatoriasPublicadas({ limite: 3 }),
-    datos.listarNoticiasPublicadas({ limite: 3 })
+    datos.listarNoticiasPublicadas({ limite: 3, soloCuatrimestreActual: true }),
+    datos.obtenerCuatrimestreActual()
   ]);
-  enviarExito(res, { datos: { convocatoriasDestacadas: convocatorias, noticiasRecientes: noticias } });
+  enviarExito(res, { datos: { convocatoriasDestacadas: convocatorias, noticiasRecientes: noticias, cuatrimestreActual } });
 }));
 
 rutas.get('/convocatorias', asincrono(async (req, res) => {
@@ -26,7 +27,11 @@ rutas.get('/convocatorias/:id', asincrono(async (req, res) => {
 }));
 
 rutas.get('/noticias', asincrono(async (req, res) => {
-  const noticias = await datos.listarNoticiasPublicadas();
+  const { categoria, cuatrimestreActual } = req.query;
+  const noticias = await datos.listarNoticiasPublicadas({
+    categoria: categoria || undefined,
+    soloCuatrimestreActual: cuatrimestreActual === 'true'
+  });
   enviarExito(res, { datos: noticias });
 }));
 

@@ -1,4 +1,5 @@
 import { errorValidacion, errorNoEncontrado, errorConflicto } from '../../utilidades/errorAplicacion.js';
+import { registrarAuditoria } from '../../servicios-compartidos/servicioAuditoria.js';
 import * as datos from './accesoDatosConvocatorias.js';
 import * as datosTiposBeca from '../tiposBeca/accesoDatosTiposBeca.js';
 
@@ -37,25 +38,49 @@ export async function crearConvocatoria(datosEntrada, idCreadoPor) {
     ]);
   }
   const idConvocatoria = await datos.crearConvocatoria({ ...datosEntrada, idCreadoPor });
+  await registrarAuditoria({
+    idUsuario: idCreadoPor,
+    modulo: 'CONVOCATORIAS',
+    accion: 'CREAR',
+    entidad: 'Convocatoria',
+    idEntidad: idConvocatoria,
+    detalle: `Convocatoria "${datosEntrada.nombre}" creada en borrador.`
+  });
   return obtenerConvocatoria(idConvocatoria);
 }
 
-export async function actualizarConvocatoria(idConvocatoria, datosEntrada) {
+export async function actualizarConvocatoria(idConvocatoria, datosEntrada, idUsuario = null) {
   validarDatosConvocatoria(datosEntrada);
   const convocatoria = await obtenerConvocatoria(idConvocatoria);
   if (convocatoria.Estado !== 'BORRADOR') {
     throw errorConflicto('Solo se puede editar una convocatoria en estado BORRADOR.');
   }
   await datos.actualizarConvocatoria(idConvocatoria, datosEntrada);
+  await registrarAuditoria({
+    idUsuario,
+    modulo: 'CONVOCATORIAS',
+    accion: 'ACTUALIZAR',
+    entidad: 'Convocatoria',
+    idEntidad: idConvocatoria,
+    detalle: `Convocatoria "${datosEntrada.nombre}" actualizada.`
+  });
   return obtenerConvocatoria(idConvocatoria);
 }
 
-export async function enviarAprobacion(idConvocatoria) {
+export async function enviarAprobacion(idConvocatoria, idUsuario = null) {
   const convocatoria = await obtenerConvocatoria(idConvocatoria);
   if (convocatoria.Estado !== 'BORRADOR') {
     throw errorConflicto('Solo una convocatoria en BORRADOR puede enviarse a aprobación.');
   }
   await datos.cambiarEstadoConvocatoria(idConvocatoria, 'PENDIENTE_APROBACION');
+  await registrarAuditoria({
+    idUsuario,
+    modulo: 'CONVOCATORIAS',
+    accion: 'ENVIAR_APROBACION',
+    entidad: 'Convocatoria',
+    idEntidad: idConvocatoria,
+    detalle: 'Convocatoria enviada a aprobación.'
+  });
   return obtenerConvocatoria(idConvocatoria);
 }
 
@@ -65,10 +90,18 @@ export async function aprobarConvocatoria(idConvocatoria, idAprobadoPor) {
     throw errorConflicto('Solo una convocatoria pendiente de aprobación puede aprobarse.');
   }
   await datos.cambiarEstadoConvocatoria(idConvocatoria, 'APROBADA', idAprobadoPor);
+  await registrarAuditoria({
+    idUsuario: idAprobadoPor,
+    modulo: 'CONVOCATORIAS',
+    accion: 'APROBAR',
+    entidad: 'Convocatoria',
+    idEntidad: idConvocatoria,
+    detalle: 'Convocatoria aprobada.'
+  });
   return obtenerConvocatoria(idConvocatoria);
 }
 
-export async function publicarConvocatoria(idConvocatoria) {
+export async function publicarConvocatoria(idConvocatoria, idUsuario = null) {
   const convocatoria = await obtenerConvocatoria(idConvocatoria);
   if (convocatoria.Estado !== 'APROBADA') {
     throw errorConflicto('Solo una convocatoria aprobada puede publicarse.');
@@ -77,6 +110,14 @@ export async function publicarConvocatoria(idConvocatoria) {
     throw errorValidacion('La convocatoria debe tener al menos un requisito activo para publicarse.');
   }
   await datos.cambiarEstadoConvocatoria(idConvocatoria, 'PUBLICADA');
+  await registrarAuditoria({
+    idUsuario,
+    modulo: 'CONVOCATORIAS',
+    accion: 'PUBLICAR',
+    entidad: 'Convocatoria',
+    idEntidad: idConvocatoria,
+    detalle: `Convocatoria "${convocatoria.Nombre}" publicada.`
+  });
   return obtenerConvocatoria(idConvocatoria);
 }
 

@@ -1,7 +1,10 @@
 import { errorConflicto, errorNoEncontrado, errorProhibido, errorValidacion } from '../../utilidades/errorAplicacion.js';
 import { normalizarEstadoConsulta, obtenerPaginacion, validarProgramacionVisita } from '../../utilidades/reglasSegmentoDos.js';
 import { crearNotificacionCompleta as crearNotificacion } from '../../servicios-compartidos/servicioNotificacionesEventos.js';
+import { registrarAuditoria } from '../../servicios-compartidos/servicioAuditoria.js';
 import * as datos from './accesoDatosComunicaciones.js';
+
+const CATEGORIAS_NOTICIA = ['ACADEMICA', 'FINANCIERA', 'CONVOCATORIA', 'EVENTO', 'URGENTE', 'GENERAL'];
 
 export const listarVisitas = (idExpediente) => datos.listarVisitas(idExpediente);
 
@@ -140,22 +143,50 @@ function validarNoticia(entrada) {
   if (!['GENERAL', 'ASPIRANTE', 'BECADO'].includes(entrada.publicoDestino)) {
     throw errorValidacion('El publico destino no es valido.');
   }
+  if (entrada.categoria && !CATEGORIAS_NOTICIA.includes(entrada.categoria)) {
+    throw errorValidacion('La categoria de la noticia no es valida.');
+  }
 }
 
 export async function crearNoticia(usuario, entrada) {
   validarNoticia(entrada);
-  return { idNoticia: await datos.crearNoticia(usuario.idUsuario, entrada) };
+  const idNoticia = await datos.crearNoticia(usuario.idUsuario, entrada);
+  await registrarAuditoria({
+    idUsuario: usuario.idUsuario,
+    modulo: 'NOTICIAS',
+    accion: 'CREAR',
+    entidad: 'Noticia',
+    idEntidad: idNoticia,
+    detalle: `Noticia "${entrada.titulo}" creada (categoria ${entrada.categoria || 'GENERAL'}).`
+  });
+  return { idNoticia };
 }
 
-export async function actualizarNoticia(id, entrada) {
+export async function actualizarNoticia(id, entrada, usuario) {
   validarNoticia(entrada);
   if (!await datos.actualizarNoticia(id, entrada)) throw errorNoEncontrado('La noticia no existe.');
+  await registrarAuditoria({
+    idUsuario: usuario?.idUsuario ?? null,
+    modulo: 'NOTICIAS',
+    accion: 'ACTUALIZAR',
+    entidad: 'Noticia',
+    idEntidad: id,
+    detalle: `Noticia "${entrada.titulo}" actualizada.`
+  });
 }
 
-export async function cambiarEstadoNoticia(id, estado) {
+export async function cambiarEstadoNoticia(id, estado, usuario) {
   if (!['BORRADOR', 'PUBLICADA', 'DESPUBLICADA', 'INACTIVA'].includes(estado)) {
     throw errorValidacion('El estado no es valido.');
   }
   const estadoPersistido = ['DESPUBLICADA', 'INACTIVA'].includes(estado) ? 'ARCHIVADA' : estado;
   if (!await datos.cambiarEstadoNoticia(id, estadoPersistido)) throw errorNoEncontrado('La noticia no existe.');
+  await registrarAuditoria({
+    idUsuario: usuario?.idUsuario ?? null,
+    modulo: 'NOTICIAS',
+    accion: 'CAMBIAR_ESTADO',
+    entidad: 'Noticia',
+    idEntidad: id,
+    detalle: `Estado cambiado a ${estadoPersistido}.`
+  });
 }

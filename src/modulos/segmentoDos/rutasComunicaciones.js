@@ -65,11 +65,11 @@ rutas.post('/noticias', requierePermiso('NOTICIA_GESTIONAR'), asincrono(async (r
   enviarExito(res, { mensaje: 'Noticia creada.', datos: await servicio.crearNoticia(req.usuario, req.body), estadoHttp: 201 });
 }));
 rutas.put('/noticias/:id', requierePermiso('NOTICIA_GESTIONAR'), asincrono(async (req, res) => {
-  await servicio.actualizarNoticia(Number(req.params.id), req.body);
+  await servicio.actualizarNoticia(Number(req.params.id), req.body, req.usuario);
   enviarExito(res, { mensaje: 'Noticia actualizada.' });
 }));
 rutas.patch('/noticias/:id/estado', requierePermiso('NOTICIA_GESTIONAR'), asincrono(async (req, res) => {
-  await servicio.cambiarEstadoNoticia(Number(req.params.id), req.body.estado);
+  await servicio.cambiarEstadoNoticia(Number(req.params.id), req.body.estado, req.usuario);
   enviarExito(res, { mensaje: 'Estado de la noticia actualizado.' });
 }));
 
