@@ -64,12 +64,15 @@ export async function obtenerDatosCompletos(idSolicitud) {
     miembrosFamiliares = miembros.recordset;
   }
 
+  const notasSimuladas = await obtenerNotasSimuladas(idSolicitud);
+
   return {
     datosPersonales: personales.recordset[0] || null,
     datosAcademicos: academicos.recordset[0] || null,
     datosSocioeconomicos: socioeconomicos.recordset[0]
       ? { ...socioeconomicos.recordset[0], miembrosFamiliares }
-      : null
+      : null,
+    notasSimuladas
   };
 }
 
@@ -188,6 +191,71 @@ export async function guardarDatosSocioeconomicos(idSolicitud, datos) {
     }
 
     await transaccion.commit();
+  } catch (error) {
+    await transaccion.rollback();
+    throw error;
+  }
+}
+
+// --- Notas simuladas (informacion de prueba ingresada por el aspirante) ---
+
+export async function obtenerNotasSimuladas(idSolicitud) {
+  const pool = await obtenerPool();
+  const cabecera = await pool.request().input('id', sql.Int, idSolicitud)
+    .query('SELECT * FROM dbo.NotasSimuladasSolicitud WHERE IdSolicitud = @id');
+  if (!cabecera.recordset[0]) return null;
+
+  const materias = await pool.request()
+    .input('idNotas', sql.Int, cabecera.recordset[0].IdNotasSimuladas)
+    .query('SELECT * FROM dbo.MateriasNotaSimulada WHERE IdNotasSimuladas = @idNotas ORDER BY IdMateriaNota');
+
+  return { ...cabecera.recordset[0], materias: materias.recordset };
+}
+
+export async function guardarNotasSimuladas(idSolicitud, { materias, promedio }) {
+  const pool = await obtenerPool();
+  const existente = await pool.request().input('id', sql.Int, idSolicitud)
+    .query('SELECT IdNotasSimuladas FROM dbo.NotasSimuladasSolicitud WHERE IdSolicitud = @id');
+
+  const transaccion = new sql.Transaction(pool);
+  await transaccion.begin();
+  try {
+    let idNotasSimuladas;
+    const solicitud = transaccion.request()
+      .input('idSolicitud', sql.Int, idSolicitud)
+      .input('promedio', sql.Decimal(5, 2), promedio);
+
+    if (existente.recordset[0]) {
+      idNotasSimuladas = existente.recordset[0].IdNotasSimuladas;
+      await solicitud.query(`
+        UPDATE dbo.NotasSimuladasSolicitud SET Promedio = @promedio, FechaActualizacion = SYSUTCDATETIME()
+        WHERE IdSolicitud = @idSolicitud
+      `);
+      await transaccion.request().input('id', sql.Int, idNotasSimuladas)
+        .query('DELETE FROM dbo.MateriasNotaSimulada WHERE IdNotasSimuladas = @id');
+    } else {
+      const resultado = await solicitud.query(`
+        INSERT INTO dbo.NotasSimuladasSolicitud (IdSolicitud, Promedio)
+        OUTPUT INSERTED.IdNotasSimuladas
+        VALUES (@idSolicitud, @promedio)
+      `);
+      idNotasSimuladas = resultado.recordset[0].IdNotasSimuladas;
+    }
+
+    for (const materia of materias) {
+      await transaccion.request()
+        .input('idNotas', sql.Int, idNotasSimuladas)
+        .input('nombreMateria', sql.NVarChar(150), materia.nombreMateria)
+        .input('nota', sql.Decimal(5, 2), materia.nota)
+        .input('periodo', sql.NVarChar(50), materia.periodo)
+        .query(`
+          INSERT INTO dbo.MateriasNotaSimulada (IdNotasSimuladas, NombreMateria, Nota, Periodo)
+          VALUES (@idNotas, @nombreMateria, @nota, @periodo)
+        `);
+    }
+
+    await transaccion.commit();
+    return idNotasSimuladas;
   } catch (error) {
     await transaccion.rollback();
     throw error;

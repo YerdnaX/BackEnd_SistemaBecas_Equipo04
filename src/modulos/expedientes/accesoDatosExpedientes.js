@@ -19,6 +19,7 @@ export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResp
   const resultado = await solicitud.query(`
     SELECT e.*, s.IdConvocatoria, s.IdUsuario, c.Nombre AS NombreConvocatoria,
       u.Nombre AS NombreAspirante, u.PrimerApellido AS ApellidoAspirante,
+      dp.Identificacion AS CedulaAspirante,
       (SELECT TOP 1 emp.NumeroEmpleado FROM dbo.AsignacionesExpediente a
         JOIN dbo.Empleados emp ON emp.IdEmpleado = a.IdEmpleado
         WHERE a.IdExpediente = e.IdExpediente AND a.Activa = 1) AS ResponsableAsignado,
@@ -27,6 +28,7 @@ export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResp
     JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
     JOIN dbo.Convocatorias c ON c.IdConvocatoria = s.IdConvocatoria
     JOIN dbo.Usuarios u ON u.IdUsuario = s.IdUsuario
+    LEFT JOIN dbo.DatosPersonalesSolicitud dp ON dp.IdSolicitud = s.IdSolicitud
     ${filtro}
     ORDER BY e.FechaApertura DESC
     OFFSET @desplazamiento ROWS FETCH NEXT @tamanoPagina ROWS ONLY

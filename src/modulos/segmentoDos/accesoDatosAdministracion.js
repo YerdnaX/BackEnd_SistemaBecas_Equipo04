@@ -8,15 +8,16 @@ export async function listarUsuarios(filtros) {
     .input('limite', sql.Int, filtros.limite)
     .input('desplazamiento', sql.Int, filtros.desplazamiento)
     .query(`
-      SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido,
+      SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido, u.Cedula,
         u.Estado, u.CorreoVerificado, u.Activo, u.FechaCreacion,
         STRING_AGG(r.Codigo, ',') AS Roles, COUNT(*) OVER() AS Total
       FROM dbo.Usuarios u
       LEFT JOIN dbo.UsuariosRoles ur ON ur.IdUsuario = u.IdUsuario AND ur.Activo = 1
       LEFT JOIN dbo.Roles r ON r.IdRol = ur.IdRol
-      WHERE (@buscar IS NULL OR u.Correo LIKE @buscar OR u.Nombre LIKE @buscar OR u.PrimerApellido LIKE @buscar)
+      WHERE (@buscar IS NULL OR u.Correo LIKE @buscar OR u.Nombre LIKE @buscar
+             OR u.PrimerApellido LIKE @buscar OR u.Cedula LIKE @buscar)
         AND (@estado IS NULL OR u.Estado = @estado)
-      GROUP BY u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido,
+      GROUP BY u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido, u.Cedula,
         u.Estado, u.CorreoVerificado, u.Activo, u.FechaCreacion
       ORDER BY u.FechaCreacion DESC
       OFFSET @desplazamiento ROWS FETCH NEXT @limite ROWS ONLY
@@ -32,7 +33,7 @@ export async function listarUsuarios(filtros) {
 export async function obtenerUsuario(idUsuario) {
   const pool = await obtenerPool();
   const usuario = await pool.request().input('id', sql.Int, idUsuario).query(`
-    SELECT IdUsuario, Correo, Nombre, PrimerApellido, SegundoApellido, Estado,
+    SELECT IdUsuario, Correo, Nombre, PrimerApellido, SegundoApellido, Cedula, Estado,
       CorreoVerificado, Activo, FechaCreacion, FechaActualizacion
     FROM dbo.Usuarios WHERE IdUsuario = @id
   `);
@@ -44,6 +45,15 @@ export async function obtenerUsuario(idUsuario) {
   return { ...usuario.recordset[0], roles: roles.recordset };
 }
 
+export async function obtenerUsuarioPorCedula(cedula) {
+  if (!cedula) return null;
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('cedula', sql.Char(9), cedula)
+    .query('SELECT IdUsuario FROM dbo.Usuarios WHERE Cedula = @cedula');
+  return resultado.recordset[0] || null;
+}
+
 export async function crearUsuario(entrada, contrasenaHash) {
   const pool = await obtenerPool();
   const resultado = await pool.request()
@@ -52,11 +62,12 @@ export async function crearUsuario(entrada, contrasenaHash) {
     .input('nombre', sql.NVarChar(100), entrada.nombre)
     .input('apellido', sql.NVarChar(100), entrada.primerApellido)
     .input('segundo', sql.NVarChar(100), entrada.segundoApellido || null)
+    .input('cedula', sql.Char(9), entrada.cedula || null)
     .query(`
       INSERT INTO dbo.Usuarios
-        (Correo, ContrasenaHash, Nombre, PrimerApellido, SegundoApellido, Estado, CorreoVerificado)
+        (Correo, ContrasenaHash, Nombre, PrimerApellido, SegundoApellido, Cedula, Estado, CorreoVerificado)
       OUTPUT INSERTED.IdUsuario
-      VALUES (@correo, @hash, @nombre, @apellido, @segundo, 'ACTIVO', 1)
+      VALUES (@correo, @hash, @nombre, @apellido, @segundo, @cedula, 'ACTIVO', 1)
     `);
   return resultado.recordset[0].IdUsuario;
 }
@@ -68,9 +79,10 @@ export async function actualizarUsuario(idUsuario, entrada) {
     .input('nombre', sql.NVarChar(100), entrada.nombre)
     .input('apellido', sql.NVarChar(100), entrada.primerApellido)
     .input('segundo', sql.NVarChar(100), entrada.segundoApellido || null)
+    .input('cedula', sql.Char(9), entrada.cedula || null)
     .query(`
       UPDATE dbo.Usuarios SET Correo = @correo, Nombre = @nombre, PrimerApellido = @apellido,
-        SegundoApellido = @segundo, FechaActualizacion = SYSUTCDATETIME()
+        SegundoApellido = @segundo, Cedula = COALESCE(@cedula, Cedula), FechaActualizacion = SYSUTCDATETIME()
       WHERE IdUsuario = @id
     `);
 }

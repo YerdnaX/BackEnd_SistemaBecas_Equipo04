@@ -12,6 +12,8 @@ rutas.get('/:id', controlador.obtener);
 rutas.put('/:id/datos-personales', requierePermiso('SOLICITUD_EDITAR_PROPIA'), controlador.guardarDatosPersonales);
 rutas.put('/:id/datos-academicos', requierePermiso('SOLICITUD_EDITAR_PROPIA'), controlador.guardarDatosAcademicos);
 rutas.put('/:id/datos-socioeconomicos', requierePermiso('SOLICITUD_EDITAR_PROPIA'), controlador.guardarDatosSocioeconomicos);
+rutas.get('/:id/notas-simuladas', controlador.obtenerNotasSimuladas);
+rutas.put('/:id/notas-simuladas', requierePermiso('SOLICITUD_EDITAR_PROPIA'), controlador.guardarNotasSimuladas);
 rutas.get('/:id/documentos', controlador.listarDocumentos);
 rutas.post('/:id/documentos', requierePermiso('DOCUMENTO_CARGAR_PROPIO'), controlador.agregarDocumento);
 rutas.delete('/:id/documentos/:idDocumento', requierePermiso('DOCUMENTO_CARGAR_PROPIO'), controlador.eliminarDocumento);

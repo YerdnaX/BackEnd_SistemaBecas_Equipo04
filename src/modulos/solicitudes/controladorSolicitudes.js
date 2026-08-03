@@ -28,6 +28,16 @@ export const guardarDatosSocioeconomicos = asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Datos socioeconómicos guardados.', datos: solicitud });
 });
 
+export const obtenerNotasSimuladas = asincrono(async (req, res) => {
+  const notas = await servicio.obtenerNotasSimuladas(Number(req.params.id), req.usuario);
+  enviarExito(res, { datos: notas });
+});
+
+export const guardarNotasSimuladas = asincrono(async (req, res) => {
+  const solicitud = await servicio.guardarNotasSimuladas(Number(req.params.id), req.usuario, req.body);
+  enviarExito(res, { mensaje: 'Notas simuladas guardadas.', datos: solicitud });
+});
+
 export const listarDocumentos = asincrono(async (req, res) => {
   const documentos = await servicio.listarDocumentos(Number(req.params.id), req.usuario);
   enviarExito(res, { datos: documentos });

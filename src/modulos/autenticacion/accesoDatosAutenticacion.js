@@ -16,7 +16,15 @@ export async function obtenerUsuarioPorId(idUsuario) {
   return resultado.recordset[0] || null;
 }
 
-export async function crearUsuario({ correo, contrasenaHash, nombre, primerApellido, segundoApellido }) {
+export async function obtenerUsuarioPorCedula(cedula) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('cedula', sql.Char(9), cedula)
+    .query('SELECT * FROM dbo.Usuarios WHERE Cedula = @cedula');
+  return resultado.recordset[0] || null;
+}
+
+export async function crearUsuario({ correo, contrasenaHash, nombre, primerApellido, segundoApellido, cedula }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -27,10 +35,11 @@ export async function crearUsuario({ correo, contrasenaHash, nombre, primerApell
       .input('nombre', sql.NVarChar(100), nombre)
       .input('primerApellido', sql.NVarChar(100), primerApellido)
       .input('segundoApellido', sql.NVarChar(100), segundoApellido || null)
+      .input('cedula', sql.Char(9), cedula || null)
       .query(`
-        INSERT INTO dbo.Usuarios (Correo, ContrasenaHash, Nombre, PrimerApellido, SegundoApellido)
+        INSERT INTO dbo.Usuarios (Correo, ContrasenaHash, Nombre, PrimerApellido, SegundoApellido, Cedula)
         OUTPUT INSERTED.IdUsuario
-        VALUES (@correo, @contrasenaHash, @nombre, @primerApellido, @segundoApellido)
+        VALUES (@correo, @contrasenaHash, @nombre, @primerApellido, @segundoApellido, @cedula)
       `);
     const idUsuario = resultado.recordset[0].IdUsuario;
 

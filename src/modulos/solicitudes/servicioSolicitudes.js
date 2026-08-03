@@ -1,4 +1,5 @@
 import { errorValidacion, errorNoEncontrado, errorProhibido, errorConflicto } from '../../utilidades/errorAplicacion.js';
+import { validarMateriasNotas, calcularPromedioNotas } from '../../utilidades/notasSimuladas.js';
 import * as datos from './accesoDatosSolicitudes.js';
 import * as datosConvocatorias from '../convocatorias/accesoDatosConvocatorias.js';
 import { guardarArchivo, obtenerArchivo, eliminarArchivoLogico } from '../../servicios-compartidos/servicioArchivos.js';
@@ -89,11 +90,29 @@ const SITUACIONES_LABORALES = new Set([
   'Otro'
 ]);
 
+/**
+ * Compara la fecha/hora actual contra la ventana de apertura/cierre de la
+ * convocatoria. Es una comprobacion independiente del estado manual de la
+ * etapa RECEPCION: aunque alguien deje la etapa ABIERTA, no se aceptan
+ * solicitudes fuera del rango de fecha/hora real de la convocatoria.
+ */
+export function validarVentanaConvocatoria(convocatoria, ahora = new Date()) {
+  const inicio = new Date(convocatoria.FechaInicio);
+  const fin = new Date(convocatoria.FechaFin);
+  if (ahora < inicio) {
+    throw errorConflicto('La convocatoria aún no abre.');
+  }
+  if (ahora > fin) {
+    throw errorConflicto('La convocatoria ya cerró.');
+  }
+}
+
 export async function crearSolicitud(idUsuario, idConvocatoria) {
   const convocatoria = await datosConvocatorias.obtenerConvocatoriaPorId(idConvocatoria);
   if (!convocatoria || convocatoria.Estado !== 'PUBLICADA') {
     throw errorValidacion('La convocatoria no está disponible para recibir solicitudes.');
   }
+  validarVentanaConvocatoria(convocatoria);
 
   const etapaRecepcion = await datosConvocatorias.obtenerEtapaAbierta(idConvocatoria, 'RECEPCION');
   if (!etapaRecepcion) {
@@ -184,6 +203,35 @@ export async function guardarDatosSocioeconomicos(idSolicitud, usuarioActual, da
   if (errores.length > 0) throw errorValidacion('Revise los datos socioeconómicos.', errores);
 
   await datos.guardarDatosSocioeconomicos(idSolicitud, datosEntrada);
+  await actualizarProgresoSolicitud(idSolicitud);
+  return obtenerSolicitud(idSolicitud, usuarioActual);
+}
+
+// --- Notas simuladas (informacion de prueba ingresada por el aspirante,
+// no proviene de Registro Academico; misma escala 0-100 que Promedio de
+// DatosAcademicosSolicitud, ya vigente en el sistema) ---
+
+export async function obtenerNotasSimuladas(idSolicitud, usuarioActual) {
+  const solicitud = await datos.obtenerSolicitudPorId(idSolicitud);
+  if (!solicitud) throw errorNoEncontrado('La solicitud no existe.');
+  if (!esPropietarioOAutorizado(solicitud, usuarioActual)) throw errorProhibido();
+  return datos.obtenerNotasSimuladas(idSolicitud);
+}
+
+export async function guardarNotasSimuladas(idSolicitud, usuarioActual, { materias }) {
+  await obtenerSolicitudPropiaEditable(idSolicitud, usuarioActual);
+
+  const errores = validarMateriasNotas(materias);
+  if (errores.length > 0) throw errorValidacion('Revise las notas simuladas.', errores);
+
+  await datos.guardarNotasSimuladas(idSolicitud, {
+    materias: materias.map((materia) => ({
+      nombreMateria: materia.nombreMateria.trim(),
+      nota: Number(materia.nota),
+      periodo: materia.periodo.trim()
+    })),
+    promedio: calcularPromedioNotas(materias)
+  });
   await actualizarProgresoSolicitud(idSolicitud);
   return obtenerSolicitud(idSolicitud, usuarioActual);
 }
@@ -286,6 +334,9 @@ export async function enviarSolicitud(idSolicitud, usuarioActual) {
   if (solicitud.Estado !== 'BORRADOR') {
     throw errorConflicto('La solicitud ya fue enviada.');
   }
+
+  const convocatoria = await datosConvocatorias.obtenerConvocatoriaPorId(solicitud.IdConvocatoria);
+  validarVentanaConvocatoria(convocatoria);
 
   const etapaRecepcion = await datosConvocatorias.obtenerEtapaAbierta(solicitud.IdConvocatoria, 'RECEPCION');
   if (!etapaRecepcion) {

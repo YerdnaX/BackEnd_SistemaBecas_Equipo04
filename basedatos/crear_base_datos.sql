@@ -79,6 +79,7 @@ BEGIN
         CorreoVerificado BIT NOT NULL DEFAULT 0,
         RequiereDosFactores BIT NOT NULL DEFAULT 1,
         IntentosFallidos INT NOT NULL DEFAULT 0,
+        Cedula CHAR(9) NULL,
         Activo BIT NOT NULL DEFAULT 1,
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
@@ -89,6 +90,16 @@ GO
 
 IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.Usuarios') AND name = 'RequiereDosFactores')
     ALTER TABLE dbo.Usuarios ADD RequiereDosFactores BIT NOT NULL CONSTRAINT DF_Usuarios_RequiereDosFactores DEFAULT 1;
+GO
+
+IF COL_LENGTH('dbo.Usuarios', 'Cedula') IS NULL
+    ALTER TABLE dbo.Usuarios ADD Cedula CHAR(9) NULL;
+GO
+
+IF NOT EXISTS (
+    SELECT 1 FROM sys.indexes WHERE name = 'UQ_Usuarios_Cedula' AND object_id = OBJECT_ID('dbo.Usuarios')
+)
+    CREATE UNIQUE INDEX UQ_Usuarios_Cedula ON dbo.Usuarios(Cedula) WHERE Cedula IS NOT NULL;
 GO
 
 IF OBJECT_ID(N'dbo.UsuariosRoles', N'U') IS NULL
@@ -321,6 +332,21 @@ BEGIN
 END
 GO
 
+IF OBJECT_ID(N'dbo.RequisitosBeca', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.RequisitosBeca (
+        IdRequisitoBeca INT IDENTITY(1,1) PRIMARY KEY,
+        IdTipoBeca INT NOT NULL FOREIGN KEY REFERENCES dbo.TiposBeca(IdTipoBeca),
+        Nombre NVARCHAR(150) NOT NULL,
+        Descripcion NVARCHAR(400) NULL,
+        IdTipoDocumento INT NULL FOREIGN KEY REFERENCES dbo.TiposDocumento(IdTipoDocumento),
+        Obligatorio BIT NOT NULL DEFAULT 1,
+        Activo BIT NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IX_RequisitosBeca_TipoBeca ON dbo.RequisitosBeca(IdTipoBeca);
+END
+GO
+
 IF OBJECT_ID(N'dbo.TiposDocumento', N'U') IS NULL
 BEGIN
     CREATE TABLE dbo.TiposDocumento (
@@ -535,6 +561,30 @@ BEGIN
         DependeEconomicamente BIT NOT NULL DEFAULT 1
     );
     CREATE INDEX IX_MiembrosGrupoFamiliar_Datos ON dbo.MiembrosGrupoFamiliar(IdDatosSocioeconomicos);
+END
+GO
+
+IF OBJECT_ID(N'dbo.NotasSimuladasSolicitud', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.NotasSimuladasSolicitud (
+        IdNotasSimuladas INT IDENTITY(1,1) PRIMARY KEY,
+        IdSolicitud INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Solicitudes(IdSolicitud),
+        Promedio DECIMAL(5,2) NOT NULL DEFAULT 0 CHECK (Promedio BETWEEN 0 AND 100),
+        FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.MateriasNotaSimulada', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.MateriasNotaSimulada (
+        IdMateriaNota INT IDENTITY(1,1) PRIMARY KEY,
+        IdNotasSimuladas INT NOT NULL FOREIGN KEY REFERENCES dbo.NotasSimuladasSolicitud(IdNotasSimuladas),
+        NombreMateria NVARCHAR(150) NOT NULL,
+        Nota DECIMAL(5,2) NOT NULL CHECK (Nota BETWEEN 0 AND 100),
+        Periodo NVARCHAR(50) NOT NULL
+    );
+    CREATE INDEX IX_MateriasNotaSimulada_Notas ON dbo.MateriasNotaSimulada(IdNotasSimuladas);
 END
 GO
 
@@ -1406,7 +1456,9 @@ FROM (VALUES
     ('EXPEDIENTE_CERRAR', 'Cerrar expediente'),
     ('CONFIGURACION_GESTIONAR', 'Administrar correo, plantillas, parametros y catalogos'),
     ('AUDITORIA_VER', 'Consultar auditoria, eventos de seguridad y sesiones'),
-    ('CHATBOT_GESTIONAR', 'Crear, editar y publicar base de conocimiento del chatbot')
+    ('CHATBOT_GESTIONAR', 'Crear, editar y publicar base de conocimiento del chatbot'),
+    ('REQUISITO_BECA_GESTIONAR', 'Gestionar requisitos de beca'),
+    ('CRITERIO_BECA_GESTIONAR', 'Gestionar criterios de elegibilidad de beca')
 ) AS semilla(Codigo, Nombre)
 WHERE NOT EXISTS (SELECT 1 FROM dbo.Permisos p WHERE p.Codigo = semilla.Codigo);
 GO
@@ -1423,15 +1475,18 @@ BEGIN
     INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
     SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r, dbo.Permisos p
     WHERE r.Codigo = 'TRABAJADORA_SOCIAL' AND p.Codigo IN
-        ('CONVOCATORIA_VER','EXPEDIENTE_LISTAR','EXPEDIENTE_ASIGNAR','DOCUMENTO_REVISAR',
+        ('TIPO_BECA_VER','TIPO_BECA_CREAR','TIPO_BECA_EDITAR','CONVOCATORIA_VER','CONVOCATORIA_CREAR',
+         'CONVOCATORIA_EDITAR','CONVOCATORIA_APROBAR','CONVOCATORIA_PUBLICAR','ETAPA_GESTIONAR',
+         'REQUISITO_BECA_GESTIONAR','CRITERIO_BECA_GESTIONAR',
+         'EXPEDIENTE_LISTAR','EXPEDIENTE_ASIGNAR','DOCUMENTO_REVISAR',
          'ELEGIBILIDAD_RESOLVER','EVALUACION_REGISTRAR');
 
+    -- Gestion operativa de becas/convocatorias es exclusiva de Trabajadora
+    -- Social (ver Segmento 05). Coordinador de Becas conserva solo lectura.
     INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
     SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r, dbo.Permisos p
     WHERE r.Codigo = 'COORDINADOR_BECAS' AND p.Codigo IN
-        ('TIPO_BECA_VER','TIPO_BECA_CREAR','TIPO_BECA_EDITAR','CONVOCATORIA_VER','CONVOCATORIA_CREAR',
-         'CONVOCATORIA_EDITAR','CONVOCATORIA_APROBAR','CONVOCATORIA_PUBLICAR','ETAPA_GESTIONAR',
-         'EXPEDIENTE_LISTAR','EXPEDIENTE_ASIGNAR');
+        ('TIPO_BECA_VER','CONVOCATORIA_VER','EXPEDIENTE_LISTAR','EXPEDIENTE_ASIGNAR');
 
     INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
     SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r, dbo.Permisos p
@@ -1442,6 +1497,21 @@ BEGIN
     SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r, dbo.Permisos p
     WHERE r.Codigo = 'ADMINISTRADOR';
 END
+GO
+
+-- La regla generica anterior le da a ADMINISTRADOR todos los permisos
+-- existentes. La gestion operativa de becas/convocatorias es exclusiva de
+-- Trabajadora Social (Segmento 05); se revoca aqui explicitamente para que
+-- una instalacion nueva nazca igual que una actualizada con
+-- actualizar_segmento_05.sql. Para revertir, volver a insertar estas filas
+-- para IdRol de 'ADMINISTRADOR'.
+DELETE rp
+FROM dbo.RolesPermisos rp
+JOIN dbo.Roles r ON r.IdRol = rp.IdRol
+JOIN dbo.Permisos p ON p.IdPermiso = rp.IdPermiso
+WHERE r.Codigo = 'ADMINISTRADOR' AND p.Codigo IN
+    ('TIPO_BECA_CREAR','TIPO_BECA_EDITAR','CONVOCATORIA_CREAR','CONVOCATORIA_EDITAR',
+     'CONVOCATORIA_APROBAR','CONVOCATORIA_PUBLICAR','ETAPA_GESTIONAR');
 GO
 
 INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)

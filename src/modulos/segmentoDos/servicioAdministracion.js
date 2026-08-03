@@ -5,14 +5,18 @@ import { obtenerPaginacion } from '../../utilidades/reglasSegmentoDos.js';
 import { guardarArchivo, obtenerArchivo } from '../../servicios-compartidos/servicioArchivos.js';
 import { crearNotificacionCompleta as crearNotificacion } from '../../servicios-compartidos/servicioNotificacionesEventos.js';
 import { crearPdfSimple } from '../../utilidades/crearPdfSimple.js';
+import { validarFormatoCedula } from '../../servicios-compartidos/servicioConsultaCedula.js';
 import * as datos from './accesoDatosAdministracion.js';
 
-function validarUsuario(entrada, requiereContrasena = false) {
+function validarUsuario(entrada, esNuevo = false) {
   if (!entrada.nombre?.trim() || !entrada.primerApellido?.trim() || !correoEsValido(entrada.correo)) {
     throw errorValidacion('Nombre, primer apellido y correo valido son obligatorios.');
   }
-  if (requiereContrasena && !contrasenaEsSegura(entrada.contrasena)) {
+  if (esNuevo && !contrasenaEsSegura(entrada.contrasena)) {
     throw errorValidacion('La contrasena temporal no cumple los requisitos de seguridad.');
+  }
+  if (esNuevo || entrada.cedula) {
+    validarFormatoCedula(entrada.cedula);
   }
 }
 
@@ -26,6 +30,8 @@ export async function obtenerUsuario(id) {
 
 export async function crearUsuario(actor, entrada) {
   validarUsuario(entrada, true);
+  const existentePorCedula = await datos.obtenerUsuarioPorCedula(entrada.cedula);
+  if (existentePorCedula) throw errorValidacion('Ya existe una cuenta registrada con esta cédula.');
   const hash = await bcrypt.hash(entrada.contrasena, 12);
   const idUsuario = await datos.crearUsuario(entrada, hash);
   if (entrada.idsRoles?.length) await datos.asignarRoles(idUsuario, entrada.idsRoles.map(Number));
@@ -34,8 +40,12 @@ export async function crearUsuario(actor, entrada) {
 }
 
 export async function actualizarUsuario(actor, id, entrada) {
-  await obtenerUsuario(id);
-  validarUsuario(entrada);
+  const actual = await obtenerUsuario(id);
+  validarUsuario(entrada, false);
+  if (entrada.cedula && entrada.cedula !== actual.Cedula) {
+    const existentePorCedula = await datos.obtenerUsuarioPorCedula(entrada.cedula);
+    if (existentePorCedula) throw errorValidacion('Ya existe una cuenta registrada con esta cédula.');
+  }
   await datos.actualizarUsuario(id, entrada);
   await datos.registrarAuditoria(actor.idUsuario, 'USUARIOS', 'ACTUALIZAR', 'Usuarios', id);
   return obtenerUsuario(id);

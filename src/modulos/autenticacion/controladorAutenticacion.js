@@ -6,6 +6,11 @@ function contextoPeticion(req) {
   return { ip: req.ip, agenteUsuario: req.headers['user-agent'] };
 }
 
+export const consultarCedula = asincrono(async (req, res) => {
+  const resultado = await servicio.consultarCedulaParaRegistro(req.params.cedula);
+  enviarExito(res, { mensaje: 'Cédula verificada.', datos: resultado });
+});
+
 export const registro = asincrono(async (req, res) => {
   const resultado = await servicio.registrarUsuario(req.body);
   enviarExito(res, {

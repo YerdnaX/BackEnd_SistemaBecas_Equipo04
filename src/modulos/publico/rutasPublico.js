@@ -2,9 +2,19 @@ import { Router } from 'express';
 import { asincrono } from '../../utilidades/asincrono.js';
 import { enviarExito } from '../../utilidades/respuestas.js';
 import { errorNoEncontrado } from '../../utilidades/errorAplicacion.js';
+import { configuracion } from '../../configuracion/variablesEntorno.js';
 import * as datos from './accesoDatosPublico.js';
 
 const rutas = Router();
+
+rutas.get('/limites-archivo', (req, res) => {
+  enviarExito(res, {
+    datos: {
+      tamanoMaximoMb: configuracion.archivos.tamanoMaximoMb,
+      extensionesPermitidas: configuracion.archivos.extensionesPermitidas
+    }
+  });
+});
 
 rutas.get('/inicio', asincrono(async (req, res) => {
   const [convocatorias, noticias, cuatrimestreActual] = await Promise.all([

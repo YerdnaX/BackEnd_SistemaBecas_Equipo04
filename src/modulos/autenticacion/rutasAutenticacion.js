@@ -4,6 +4,7 @@ import * as controlador from './controladorAutenticacion.js';
 
 const rutas = Router();
 
+rutas.get('/consulta-cedula/:cedula', limitadorAutenticacion, controlador.consultarCedula);
 rutas.post('/registro', limitadorAutenticacion, controlador.registro);
 rutas.post('/verificar-registro', limitadorAutenticacion, controlador.verificarRegistro);
 rutas.post('/iniciar-sesion', limitadorAutenticacion, controlador.iniciarSesion);

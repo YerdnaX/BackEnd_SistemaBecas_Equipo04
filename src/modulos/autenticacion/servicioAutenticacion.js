@@ -5,6 +5,7 @@ import { errorValidacion, errorNoAutorizado, errorConflicto } from '../../utilid
 import { correoEsValido, contrasenaEsSegura } from '../../utilidades/validaciones.js';
 import { generarTokenAleatorio, hashearValor, generarCodigoOtp } from '../../utilidades/tokens.js';
 import { enviarCorreo } from '../../servicios-compartidos/servicioCorreo.js';
+import { validarFormatoCedula, consultarCedula } from '../../servicios-compartidos/servicioConsultaCedula.js';
 import * as datosAuth from './accesoDatosAutenticacion.js';
 
 const RONDAS_BCRYPT = 10;
@@ -61,6 +62,7 @@ async function generarTokensSesion(usuario, contexto) {
       idUsuario: usuario.IdUsuario,
       correo: usuario.Correo,
       nombre: usuario.Nombre,
+      cedula: usuario.Cedula,
       tipoUsuario: obtenerTipoUsuario(roles),
       roles,
       permisos
@@ -68,8 +70,23 @@ async function generarTokensSesion(usuario, contexto) {
   };
 }
 
-export async function registrarUsuario({ correo, contrasena, confirmacion, nombre, primerApellido, segundoApellido, aceptaTerminos }) {
+export async function consultarCedulaParaRegistro(cedula) {
+  const cedulaNormalizada = validarFormatoCedula(cedula);
+  const existente = await datosAuth.obtenerUsuarioPorCedula(cedulaNormalizada);
+  if (existente) {
+    throw errorConflicto('Ya existe una cuenta registrada con esta cédula.');
+  }
+  return consultarCedula(cedulaNormalizada);
+}
+
+export async function registrarUsuario({ correo, contrasena, confirmacion, nombre, primerApellido, segundoApellido, aceptaTerminos, cedula }) {
   const errores = [];
+  let cedulaNormalizada = null;
+  try {
+    cedulaNormalizada = validarFormatoCedula(cedula);
+  } catch {
+    errores.push({ campo: 'cedula', mensaje: 'La cédula debe contener exactamente 9 dígitos numéricos.' });
+  }
   if (!nombre?.trim()) errores.push({ campo: 'nombre', mensaje: 'El nombre es obligatorio.' });
   if (!primerApellido?.trim()) errores.push({ campo: 'primerApellido', mensaje: 'El primer apellido es obligatorio.' });
   if (!correoEsValido(correo)) errores.push({ campo: 'correo', mensaje: 'El correo no es válido.' });
@@ -80,11 +97,14 @@ export async function registrarUsuario({ correo, contrasena, confirmacion, nombr
   if (!aceptaTerminos) errores.push({ campo: 'aceptaTerminos', mensaje: 'Debe aceptar los términos y condiciones.' });
   if (errores.length > 0) throw errorValidacion('Revise los datos del formulario.', errores);
 
-  const existente = await datosAuth.obtenerUsuarioPorCorreo(correo);
-  if (existente) throw errorValidacion('No fue posible completar el registro.', [{ campo: 'correo', mensaje: 'El correo ya está registrado.' }]);
+  const existentePorCorreo = await datosAuth.obtenerUsuarioPorCorreo(correo);
+  if (existentePorCorreo) throw errorValidacion('No fue posible completar el registro.', [{ campo: 'correo', mensaje: 'El correo ya está registrado.' }]);
+
+  const existentePorCedula = await datosAuth.obtenerUsuarioPorCedula(cedulaNormalizada);
+  if (existentePorCedula) throw errorValidacion('No fue posible completar el registro.', [{ campo: 'cedula', mensaje: 'Ya existe una cuenta registrada con esta cédula.' }]);
 
   const contrasenaHash = await bcrypt.hash(contrasena, RONDAS_BCRYPT);
-  const idUsuario = await datosAuth.crearUsuario({ correo, contrasenaHash, nombre, primerApellido, segundoApellido });
+  const idUsuario = await datosAuth.crearUsuario({ correo, contrasenaHash, nombre, primerApellido, segundoApellido, cedula: cedulaNormalizada });
 
   await datosAuth.invalidarTokensActivacionUsuario(idUsuario);
   const codigoActivacion = generarCodigoOtp();
@@ -345,6 +365,7 @@ export async function obtenerUsuarioActual(idUsuario) {
     nombre: usuario.Nombre,
     primerApellido: usuario.PrimerApellido,
     segundoApellido: usuario.SegundoApellido,
+    cedula: usuario.Cedula,
     tipoUsuario: obtenerTipoUsuario(roles),
     roles,
     permisos

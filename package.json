@@ -14,7 +14,8 @@
     "crear:administrador": "node scripts/crearAdministrador.js",
     "actualizar:segmento2": "node scripts/aplicarActualizacionSegmentoDos.js",
     "actualizar:segmento3": "node scripts/aplicarActualizacionSegmentoTres.js",
-    "actualizar:segmento4": "node scripts/aplicarActualizacionSegmentoCuatro.js"
+    "actualizar:segmento4": "node scripts/aplicarActualizacionSegmentoCuatro.js",
+    "actualizar:segmento5": "node scripts/aplicarActualizacionSegmentoCinco.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

@@ -1,4 +1,5 @@
 import { obtenerPool, sql } from '../../configuracion/baseDatos.js';
+import { combinarRequisitosConvocatoria } from '../../utilidades/requisitosConvocatoria.js';
 
 const TIPOS_ETAPA = ['RECEPCION', 'REVISION_DOCUMENTAL', 'EVALUACION', 'COMITE', 'RESULTADOS'];
 
@@ -48,7 +49,7 @@ export async function obtenerConvocatoriaPorId(idConvocatoria) {
   return { ...convocatoria.recordset[0], requisitos: requisitos.recordset, etapas: etapas.recordset };
 }
 
-export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitos = [], idCreadoPor }) {
+export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [], idCreadoPor }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -69,7 +70,18 @@ export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fecha
       `);
     const idConvocatoria = resultado.recordset[0].IdConvocatoria;
 
-    for (const requisito of requisitos) {
+    // Los requisitos base de la convocatoria se heredan de la plantilla de
+    // la beca (RequisitosBeca), para que dos becas nunca mezclen requisitos
+    // y para no reescribirlos a mano en cada convocatoria. Se copian (no se
+    // referencian) para que una convocatoria ya publicada no cambie si la
+    // plantilla de la beca se edita despues.
+    const requisitosBeca = await transaccion.request()
+      .input('idTipoBeca', sql.Int, idTipoBeca)
+      .query('SELECT * FROM dbo.RequisitosBeca WHERE IdTipoBeca = @idTipoBeca AND Activo = 1');
+
+    const requisitosACopiar = combinarRequisitosConvocatoria(requisitosBeca.recordset, requisitosAdicionales);
+
+    for (const requisito of requisitosACopiar) {
       await transaccion.request()
         .input('idConvocatoria', sql.Int, idConvocatoria)
         .input('nombre', sql.NVarChar(150), requisito.nombre)
@@ -102,7 +114,7 @@ export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fecha
   }
 }
 
-export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitos = [] }) {
+export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [] }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -126,7 +138,13 @@ export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombr
     await transaccion.request().input('id', sql.Int, idConvocatoria)
       .query('UPDATE dbo.RequisitosConvocatoria SET Activo = 0 WHERE IdConvocatoria = @id');
 
-    for (const requisito of requisitos) {
+    const requisitosBeca = await transaccion.request()
+      .input('idTipoBeca', sql.Int, idTipoBeca)
+      .query('SELECT * FROM dbo.RequisitosBeca WHERE IdTipoBeca = @idTipoBeca AND Activo = 1');
+
+    const requisitosACopiar = combinarRequisitosConvocatoria(requisitosBeca.recordset, requisitosAdicionales);
+
+    for (const requisito of requisitosACopiar) {
       await transaccion.request()
         .input('idConvocatoria', sql.Int, idConvocatoria)
         .input('nombre', sql.NVarChar(150), requisito.nombre)

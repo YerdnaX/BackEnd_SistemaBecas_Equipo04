@@ -24,10 +24,14 @@ export async function obtenerTipoBecaPorId(idTipoBeca) {
     .input('id', sql.Int, idTipoBeca)
     .query('SELECT * FROM dbo.CriteriosElegibilidad WHERE IdTipoBeca = @id AND Activo = 1');
 
-  return { ...tipoBeca.recordset[0], rubros: rubros.recordset, criterios: criterios.recordset };
+  const requisitos = await pool.request()
+    .input('id', sql.Int, idTipoBeca)
+    .query('SELECT * FROM dbo.RequisitosBeca WHERE IdTipoBeca = @id AND Activo = 1');
+
+  return { ...tipoBeca.recordset[0], rubros: rubros.recordset, criterios: criterios.recordset, requisitos: requisitos.recordset };
 }
 
-export async function crearTipoBeca({ nombre, descripcion, porcentajeCobertura, rubros = [], criterios = [] }) {
+export async function crearTipoBeca({ nombre, descripcion, porcentajeCobertura, rubros = [], criterios = [], requisitos = [] }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -67,6 +71,19 @@ export async function crearTipoBeca({ nombre, descripcion, porcentajeCobertura, 
         `);
     }
 
+    for (const requisito of requisitos) {
+      await transaccion.request()
+        .input('idTipoBeca', sql.Int, idTipoBeca)
+        .input('nombre', sql.NVarChar(150), requisito.nombre)
+        .input('descripcion', sql.NVarChar(400), requisito.descripcion || null)
+        .input('idTipoDocumento', sql.Int, requisito.idTipoDocumento || null)
+        .input('obligatorio', sql.Bit, requisito.obligatorio !== false)
+        .query(`
+          INSERT INTO dbo.RequisitosBeca (IdTipoBeca, Nombre, Descripcion, IdTipoDocumento, Obligatorio)
+          VALUES (@idTipoBeca, @nombre, @descripcion, @idTipoDocumento, @obligatorio)
+        `);
+    }
+
     await transaccion.commit();
     return idTipoBeca;
   } catch (error) {
@@ -75,7 +92,7 @@ export async function crearTipoBeca({ nombre, descripcion, porcentajeCobertura, 
   }
 }
 
-export async function actualizarTipoBeca(idTipoBeca, { nombre, descripcion, porcentajeCobertura, rubros = [], criterios = [] }) {
+export async function actualizarTipoBeca(idTipoBeca, { nombre, descripcion, porcentajeCobertura, rubros = [], criterios = [], requisitos = [] }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -95,6 +112,8 @@ export async function actualizarTipoBeca(idTipoBeca, { nombre, descripcion, porc
       .query('UPDATE dbo.RubrosCobertura SET Activo = 0 WHERE IdTipoBeca = @id');
     await transaccion.request().input('id', sql.Int, idTipoBeca)
       .query('UPDATE dbo.CriteriosElegibilidad SET Activo = 0 WHERE IdTipoBeca = @id');
+    await transaccion.request().input('id', sql.Int, idTipoBeca)
+      .query('UPDATE dbo.RequisitosBeca SET Activo = 0 WHERE IdTipoBeca = @id');
 
     for (const rubro of rubros) {
       await transaccion.request()
@@ -120,11 +139,32 @@ export async function actualizarTipoBeca(idTipoBeca, { nombre, descripcion, porc
         `);
     }
 
+    for (const requisito of requisitos) {
+      await transaccion.request()
+        .input('idTipoBeca', sql.Int, idTipoBeca)
+        .input('nombre', sql.NVarChar(150), requisito.nombre)
+        .input('descripcion', sql.NVarChar(400), requisito.descripcion || null)
+        .input('idTipoDocumento', sql.Int, requisito.idTipoDocumento || null)
+        .input('obligatorio', sql.Bit, requisito.obligatorio !== false)
+        .query(`
+          INSERT INTO dbo.RequisitosBeca (IdTipoBeca, Nombre, Descripcion, IdTipoDocumento, Obligatorio)
+          VALUES (@idTipoBeca, @nombre, @descripcion, @idTipoDocumento, @obligatorio)
+        `);
+    }
+
     await transaccion.commit();
   } catch (error) {
     await transaccion.rollback();
     throw error;
   }
+}
+
+export async function listarRequisitosBecaActivos(idTipoBeca) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request()
+    .input('id', sql.Int, idTipoBeca)
+    .query('SELECT * FROM dbo.RequisitosBeca WHERE IdTipoBeca = @id AND Activo = 1');
+  return resultado.recordset;
 }
 
 export async function cambiarEstadoTipoBeca(idTipoBeca, activo) {

@@ -58,6 +58,15 @@ export const configuracion = {
     limiteTasaMaximo: obtenerNumero(process.env.AUTENTICACION_RATE_LIMIT_MAXIMO, 10),
     bloqueoIntentosFallidosHabilitado: obtenerBooleano(process.env.AUTENTICACION_BLOQUEO_INTENTOS_HABILITADO, false)
   },
+  consultaCedula: {
+    // Servicio externo no oficial (mirror del padron de Hacienda/TSE) para
+    // autocompletar nombre/apellidos a partir de la cedula durante el
+    // registro. Sin API key configurada, el servicio responde 503 con un
+    // mensaje claro y el registro sigue funcionando de forma manual.
+    apiKey: process.env.CONSULTA_CEDULA_API_KEY || '',
+    urlBase: process.env.CONSULTA_CEDULA_URL || 'https://www.soportereal.com/herramientas/contribuyentes/v1/contribuyente',
+    timeoutMs: obtenerNumero(process.env.CONSULTA_CEDULA_TIMEOUT_MS, 8000)
+  },
   asistenteIA: {
     // Proveedor de IA compatible con el protocolo "Chat Completions" (mismo
     // formato de OpenAI). Por defecto apunta a GitHub Models, pero puede
