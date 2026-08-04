@@ -366,6 +366,7 @@ BEGIN
         IdTipoBeca INT NOT NULL FOREIGN KEY REFERENCES dbo.TiposBeca(IdTipoBeca),
         Nombre NVARCHAR(200) NOT NULL,
         Descripcion NVARCHAR(1000) NULL,
+        Periodo NVARCHAR(30) NULL,
         FechaInicio DATETIME2 NOT NULL,
         FechaFin DATETIME2 NOT NULL,
         Cupos INT NOT NULL CHECK (Cupos > 0),
@@ -714,6 +715,8 @@ BEGIN
             CHECK (Estado IN ('BORRADOR','COMPLETA','ENVIADA_COMITE')),
         PuntajeTotal DECIMAL(6,2) NULL,
         Observaciones NVARCHAR(600) NULL,
+        Origen VARCHAR(20) NOT NULL DEFAULT 'MANUAL',
+        QuintilCalculado TINYINT NULL,
         FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
         FechaFinalizacion DATETIME2 NULL
     );
@@ -796,7 +799,8 @@ BEGIN
         Motivo NVARCHAR(600) NULL,
         IdRegistradoPor INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
         FechaDecision DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
-        Vigente BIT NOT NULL DEFAULT 1
+        Vigente BIT NOT NULL DEFAULT 1,
+        EsGrupal BIT NOT NULL DEFAULT 0
     );
     CREATE INDEX IX_DecisionesComite_Caso ON dbo.DecisionesComite(IdCasoSesion);
 END
@@ -1599,6 +1603,110 @@ END
 GO
 
 -- Configuraciones no sensibles
+-- Extension del Segmento 02: quintiles, informe social y decision grupal.
+IF OBJECT_ID(N'dbo.UmbralesQuintilCostaRica', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.UmbralesQuintilCostaRica (
+        IdUmbralQuintil INT IDENTITY(1,1) PRIMARY KEY,
+        AnioReferencia SMALLINT NOT NULL UNIQUE,
+        MaximoQ1 DECIMAL(12,2) NOT NULL,
+        MaximoQ2 DECIMAL(12,2) NOT NULL,
+        MaximoQ3 DECIMAL(12,2) NOT NULL,
+        MaximoQ4 DECIMAL(12,2) NOT NULL,
+        Fuente NVARCHAR(500) NOT NULL,
+        Activo BIT NOT NULL DEFAULT 1,
+        FechaRegistro DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT CK_UmbralesQuintil_Orden CHECK (MaximoQ1 < MaximoQ2 AND MaximoQ2 < MaximoQ3 AND MaximoQ3 < MaximoQ4)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.UmbralesQuintilCostaRica WHERE AnioReferencia = 2025)
+    INSERT INTO dbo.UmbralesQuintilCostaRica
+      (AnioReferencia, MaximoQ1, MaximoQ2, MaximoQ3, MaximoQ4, Fuente)
+    VALUES
+      (2025, 96749, 165513, 274326, 506559,
+       N'INEC Costa Rica, Encuesta Nacional de Hogares 2025, variable Q_IPCN');
+GO
+
+IF OBJECT_ID(N'dbo.PrecalculosQuintil', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.PrecalculosQuintil (
+        IdPrecalculoQuintil INT IDENTITY(1,1) PRIMARY KEY,
+        IdExpediente INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
+        IdConvocatoria INT NOT NULL FOREIGN KEY REFERENCES dbo.Convocatorias(IdConvocatoria),
+        Periodo NVARCHAR(30) NOT NULL,
+        IngresoHogar DECIMAL(12,2) NOT NULL,
+        CantidadIntegrantes INT NOT NULL,
+        IngresoPerCapita DECIMAL(12,2) NOT NULL,
+        Quintil TINYINT NOT NULL CHECK (Quintil BETWEEN 1 AND 5),
+        EsElegible BIT NOT NULL,
+        Metodo VARCHAR(40) NOT NULL DEFAULT 'INEC_ENAHO_NACIONAL',
+        AnioReferencia SMALLINT NULL,
+        Fuente NVARCHAR(500) NULL,
+        FechaCalculo DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+    CREATE INDEX IX_PrecalculosQuintil_Convocatoria ON dbo.PrecalculosQuintil(IdConvocatoria, Quintil);
+END
+GO
+
+IF OBJECT_ID(N'dbo.InformesSocialesExpediente', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.InformesSocialesExpediente (
+        IdInformeSocial INT IDENTITY(1,1) PRIMARY KEY,
+        IdExpediente INT NOT NULL UNIQUE FOREIGN KEY REFERENCES dbo.Expedientes(IdExpediente),
+        IdTrabajadorSocial INT NOT NULL FOREIGN KEY REFERENCES dbo.Usuarios(IdUsuario),
+        Resumen NVARCHAR(1200) NOT NULL,
+        Hallazgos NVARCHAR(2000) NOT NULL,
+        Recomendacion VARCHAR(20) NOT NULL CHECK (Recomendacion IN ('FAVORABLE','CONDICIONADA','DESFAVORABLE')),
+        Observaciones NVARCHAR(1000) NULL,
+        FechaCreacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        FechaActualizacion DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME()
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.MiembrosSesionComite', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.MiembrosSesionComite (
+        IdMiembroSesion INT IDENTITY(1,1) PRIMARY KEY,
+        IdSesionComite INT NOT NULL FOREIGN KEY REFERENCES dbo.SesionesComite(IdSesionComite),
+        IdMiembroComite INT NOT NULL FOREIGN KEY REFERENCES dbo.MiembrosComite(IdMiembroComite),
+        CONSTRAINT UQ_MiembrosSesionComite UNIQUE (IdSesionComite, IdMiembroComite)
+    );
+END
+GO
+
+IF OBJECT_ID(N'dbo.VotosComite', N'U') IS NULL
+BEGIN
+    CREATE TABLE dbo.VotosComite (
+        IdVotoComite INT IDENTITY(1,1) PRIMARY KEY,
+        IdCasoSesion INT NOT NULL FOREIGN KEY REFERENCES dbo.CasosSesionComite(IdCasoSesion),
+        IdMiembroComite INT NOT NULL FOREIGN KEY REFERENCES dbo.MiembrosComite(IdMiembroComite),
+        TipoDecision VARCHAR(20) NOT NULL CHECK (TipoDecision IN ('APROBADA','CONDICIONADA','LISTA_ESPERA','RECHAZADA')),
+        Motivo NVARCHAR(600) NULL,
+        FechaVoto DATETIME2 NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT UQ_VotosComite_CasoMiembro UNIQUE (IdCasoSesion, IdMiembroComite)
+    );
+END
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.Permisos WHERE Codigo = 'INFORME_SOCIAL_GESTIONAR')
+    INSERT INTO dbo.Permisos (Codigo, Nombre) VALUES ('INFORME_SOCIAL_GESTIONAR', 'Crear y actualizar informes sociales');
+IF NOT EXISTS (SELECT 1 FROM dbo.Permisos WHERE Codigo = 'INFORME_SOCIAL_VER')
+    INSERT INTO dbo.Permisos (Codigo, Nombre) VALUES ('INFORME_SOCIAL_VER', 'Consultar informes sociales');
+GO
+
+INSERT INTO dbo.RolesPermisos (IdRol, IdPermiso)
+SELECT r.IdRol, p.IdPermiso FROM dbo.Roles r CROSS JOIN dbo.Permisos p
+WHERE (
+    (r.Codigo = 'TRABAJADORA_SOCIAL' AND p.Codigo IN ('INFORME_SOCIAL_GESTIONAR','INFORME_SOCIAL_VER')) OR
+    (r.Codigo = 'COMITE_BECAS' AND p.Codigo = 'INFORME_SOCIAL_VER') OR
+    (r.Codigo = 'ADMINISTRADOR' AND p.Codigo IN ('INFORME_SOCIAL_GESTIONAR','INFORME_SOCIAL_VER'))
+)
+AND NOT EXISTS (SELECT 1 FROM dbo.RolesPermisos rp WHERE rp.IdRol = r.IdRol AND rp.IdPermiso = p.IdPermiso);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'OTP_DURACION_MINUTOS')
     INSERT INTO dbo.ConfiguracionesSistema (Clave, Valor, Descripcion, TipoDato) VALUES ('OTP_DURACION_MINUTOS', '10', 'Minutos de vigencia del codigo 2FA', 'NUMERO');
 IF NOT EXISTS (SELECT 1 FROM dbo.ConfiguracionesSistema WHERE Clave = 'OTP_INTENTOS_MAXIMOS')

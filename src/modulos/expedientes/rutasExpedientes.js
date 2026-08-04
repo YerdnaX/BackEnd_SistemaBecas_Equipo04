@@ -8,6 +8,7 @@ const rutas = Router();
 rutas.use(requiereSesion);
 
 rutas.get('/', requierePermiso('EXPEDIENTE_LISTAR'), controlador.listar);
+rutas.get('/periodos', requierePermiso('EXPEDIENTE_LISTAR'), controlador.listarPeriodos);
 rutas.get('/:id', requierePermiso('EXPEDIENTE_LISTAR'), controlador.obtener);
 rutas.post('/:id/asignar', requierePermiso('EXPEDIENTE_ASIGNAR'), controlador.asignar);
 rutas.put('/:id/documentos/:idDocumento/revision', requierePermiso('DOCUMENTO_REVISAR'), controlador.revisarDocumento);
@@ -15,7 +16,9 @@ rutas.get('/:id/documentos/:idDocumento/archivo', requierePermiso('DOCUMENTO_REV
 rutas.post('/:id/solicitar-subsanacion', requierePermiso('DOCUMENTO_REVISAR'), controlador.solicitarSubsanacion);
 rutas.post('/:id/elegibilidad', requierePermiso('ELEGIBILIDAD_RESOLVER'), controlador.elegibilidad);
 rutas.get('/:id/evaluacion', requierePermiso('EVALUACION_REGISTRAR'), controlador.obtenerEvaluacion);
-rutas.post('/:id/evaluacion', requierePermiso('EVALUACION_REGISTRAR'), controlador.guardarEvaluacion);
+rutas.post('/:id/evaluacion/automatica', requierePermiso('EVALUACION_REGISTRAR'), controlador.guardarEvaluacionAutomatica);
+rutas.get('/:id/informe-social', requierePermiso('INFORME_SOCIAL_VER'), controlador.obtenerInformeSocial);
+rutas.put('/:id/informe-social', requierePermiso('INFORME_SOCIAL_GESTIONAR'), controlador.guardarInformeSocial);
 rutas.post('/:id/enviar-comite', requierePermiso('EVALUACION_REGISTRAR'), controlador.enviarComite);
 
 export default rutas;

@@ -14,12 +14,12 @@ export const crearSesion = asincrono(async (req, res) => {
 });
 
 export const obtenerSesion = asincrono(async (req, res) => {
-  const sesion = await servicio.obtenerSesion(Number(req.params.id));
+  const sesion = await servicio.obtenerSesion(Number(req.params.id), req.usuario.idUsuario);
   enviarExito(res, { datos: sesion });
 });
 
-export const registrarDecision = asincrono(async (req, res) => {
-  const sesion = await servicio.registrarDecision(
+export const registrarVoto = asincrono(async (req, res) => {
+  const sesion = await servicio.registrarVoto(
     Number(req.params.id), Number(req.params.idExpediente), req.body, req.usuario.idUsuario
   );
   enviarExito(res, { mensaje: 'Decisión registrada.', datos: sesion });

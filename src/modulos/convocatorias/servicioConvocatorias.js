@@ -3,10 +3,11 @@ import { registrarAuditoria } from '../../servicios-compartidos/servicioAuditori
 import * as datos from './accesoDatosConvocatorias.js';
 import * as datosTiposBeca from '../tiposBeca/accesoDatosTiposBeca.js';
 
-function validarDatosConvocatoria({ idTipoBeca, nombre, fechaInicio, fechaFin, cupos, presupuesto }) {
+function validarDatosConvocatoria({ idTipoBeca, nombre, periodo, fechaInicio, fechaFin, cupos, presupuesto }) {
   const errores = [];
   if (!idTipoBeca) errores.push({ campo: 'idTipoBeca', mensaje: 'El tipo de beca es obligatorio.' });
   if (!nombre?.trim()) errores.push({ campo: 'nombre', mensaje: 'El nombre es obligatorio.' });
+  if (!periodo?.trim()) errores.push({ campo: 'periodo', mensaje: 'El periodo academico es obligatorio.' });
   if (!fechaInicio || !fechaFin) {
     errores.push({ campo: 'fechaFin', mensaje: 'Las fechas de inicio y fin son obligatorias.' });
   } else if (new Date(fechaFin) <= new Date(fechaInicio)) {

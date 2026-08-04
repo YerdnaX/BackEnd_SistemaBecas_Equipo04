@@ -20,7 +20,12 @@ function validarUsuario(entrada, esNuevo = false) {
   }
 }
 
-export const listarUsuarios = (consulta) => datos.listarUsuarios({ ...consulta, ...obtenerPaginacion(consulta) });
+export const listarUsuarios = (consulta) => {
+  if (consulta.tipoCuenta && !['ESTUDIANTE', 'PERSONAL'].includes(consulta.tipoCuenta)) {
+    throw errorValidacion('El tipo de cuenta no es valido.');
+  }
+  return datos.listarUsuarios({ ...consulta, ...obtenerPaginacion(consulta) });
+};
 
 export async function obtenerUsuario(id) {
   const usuario = await datos.obtenerUsuario(id);
@@ -150,6 +155,7 @@ export async function crearMiembro(actor, entrada) {
   const idMiembro = await datos.crearMiembroComite(entrada);
   await datos.registrarAuditoria(actor.idUsuario, 'COMITE', 'AGREGAR_MIEMBRO', 'MiembrosComite', idMiembro);
   const empleado = await datos.obtenerEmpleado(Number(entrada.idEmpleado));
+  await datos.asegurarRolComite(empleado.IdUsuario);
   await crearNotificacion(null, {
     idUsuario: empleado.IdUsuario,
     tipo: 'MEMBRESIA_COMITE',

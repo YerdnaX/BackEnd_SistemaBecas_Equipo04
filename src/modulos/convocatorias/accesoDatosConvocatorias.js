@@ -49,7 +49,7 @@ export async function obtenerConvocatoriaPorId(idConvocatoria) {
   return { ...convocatoria.recordset[0], requisitos: requisitos.recordset, etapas: etapas.recordset };
 }
 
-export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [], idCreadoPor }) {
+export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, periodo, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [], idCreadoPor }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -58,15 +58,16 @@ export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fecha
       .input('idTipoBeca', sql.Int, idTipoBeca)
       .input('nombre', sql.NVarChar(200), nombre)
       .input('descripcion', sql.NVarChar(1000), descripcion || null)
+      .input('periodo', sql.NVarChar(30), periodo)
       .input('fechaInicio', sql.DateTime2, fechaInicio)
       .input('fechaFin', sql.DateTime2, fechaFin)
       .input('cupos', sql.Int, cupos)
       .input('presupuesto', sql.Decimal(12, 2), presupuesto || 0)
       .input('idCreadoPor', sql.Int, idCreadoPor)
       .query(`
-        INSERT INTO dbo.Convocatorias (IdTipoBeca, Nombre, Descripcion, FechaInicio, FechaFin, Cupos, Presupuesto, IdCreadoPor)
+        INSERT INTO dbo.Convocatorias (IdTipoBeca, Nombre, Descripcion, Periodo, FechaInicio, FechaFin, Cupos, Presupuesto, IdCreadoPor)
         OUTPUT INSERTED.IdConvocatoria
-        VALUES (@idTipoBeca, @nombre, @descripcion, @fechaInicio, @fechaFin, @cupos, @presupuesto, @idCreadoPor)
+        VALUES (@idTipoBeca, @nombre, @descripcion, @periodo, @fechaInicio, @fechaFin, @cupos, @presupuesto, @idCreadoPor)
       `);
     const idConvocatoria = resultado.recordset[0].IdConvocatoria;
 
@@ -114,7 +115,7 @@ export async function crearConvocatoria({ idTipoBeca, nombre, descripcion, fecha
   }
 }
 
-export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombre, descripcion, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [] }) {
+export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombre, descripcion, periodo, fechaInicio, fechaFin, cupos, presupuesto, requisitosAdicionales = [] }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -124,12 +125,13 @@ export async function actualizarConvocatoria(idConvocatoria, { idTipoBeca, nombr
       .input('idTipoBeca', sql.Int, idTipoBeca)
       .input('nombre', sql.NVarChar(200), nombre)
       .input('descripcion', sql.NVarChar(1000), descripcion || null)
+      .input('periodo', sql.NVarChar(30), periodo)
       .input('fechaInicio', sql.DateTime2, fechaInicio)
       .input('fechaFin', sql.DateTime2, fechaFin)
       .input('cupos', sql.Int, cupos)
       .input('presupuesto', sql.Decimal(12, 2), presupuesto || 0)
       .query(`
-        UPDATE dbo.Convocatorias SET IdTipoBeca = @idTipoBeca, Nombre = @nombre, Descripcion = @descripcion,
+        UPDATE dbo.Convocatorias SET IdTipoBeca = @idTipoBeca, Nombre = @nombre, Descripcion = @descripcion, Periodo = @periodo,
           FechaInicio = @fechaInicio, FechaFin = @fechaFin, Cupos = @cupos, Presupuesto = @presupuesto,
           FechaActualizacion = SYSUTCDATETIME()
         WHERE IdConvocatoria = @id

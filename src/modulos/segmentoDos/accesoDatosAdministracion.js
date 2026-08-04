@@ -5,19 +5,55 @@ export async function listarUsuarios(filtros) {
   const resultado = await pool.request()
     .input('buscar', sql.NVarChar(150), filtros.buscar ? `%${filtros.buscar}%` : null)
     .input('estado', sql.VarChar(30), filtros.estado || null)
+    .input('tipoCuenta', sql.VarChar(20), filtros.tipoCuenta || null)
     .input('limite', sql.Int, filtros.limite)
     .input('desplazamiento', sql.Int, filtros.desplazamiento)
     .query(`
-      SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido, u.Cedula,
+      SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido,
+        COALESCE(u.Cedula, identidad.Identificacion) AS Cedula,
         u.Estado, u.CorreoVerificado, u.Activo, u.FechaCreacion,
+        CASE WHEN EXISTS (SELECT 1 FROM dbo.Empleados emp WHERE emp.IdUsuario = u.IdUsuario)
+          OR EXISTS (
+            SELECT 1 FROM dbo.UsuariosRoles urp
+            JOIN dbo.Roles rp ON rp.IdRol = urp.IdRol
+            WHERE urp.IdUsuario = u.IdUsuario AND urp.Activo = 1
+              AND rp.Codigo NOT IN ('ASPIRANTE','BECADO')
+          ) THEN 'PERSONAL' ELSE 'ESTUDIANTE' END AS TipoCuenta,
         STRING_AGG(r.Codigo, ',') AS Roles, COUNT(*) OVER() AS Total
       FROM dbo.Usuarios u
       LEFT JOIN dbo.UsuariosRoles ur ON ur.IdUsuario = u.IdUsuario AND ur.Activo = 1
       LEFT JOIN dbo.Roles r ON r.IdRol = ur.IdRol
+      OUTER APPLY (
+        SELECT TOP 1 dp.Identificacion
+        FROM dbo.Solicitudes s
+        JOIN dbo.DatosPersonalesSolicitud dp ON dp.IdSolicitud = s.IdSolicitud
+        WHERE s.IdUsuario = u.IdUsuario
+        ORDER BY s.FechaActualizacion DESC, s.IdSolicitud DESC
+      ) identidad
       WHERE (@buscar IS NULL OR u.Correo LIKE @buscar OR u.Nombre LIKE @buscar
-             OR u.PrimerApellido LIKE @buscar OR u.Cedula LIKE @buscar)
+             OR u.PrimerApellido LIKE @buscar OR COALESCE(u.Cedula, identidad.Identificacion) LIKE @buscar)
         AND (@estado IS NULL OR u.Estado = @estado)
-      GROUP BY u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido, u.Cedula,
+        AND (
+          @tipoCuenta IS NULL
+          OR (@tipoCuenta = 'PERSONAL' AND (
+            EXISTS (SELECT 1 FROM dbo.Empleados emp WHERE emp.IdUsuario = u.IdUsuario)
+            OR EXISTS (
+              SELECT 1 FROM dbo.UsuariosRoles urp
+              JOIN dbo.Roles rp ON rp.IdRol = urp.IdRol
+              WHERE urp.IdUsuario = u.IdUsuario AND urp.Activo = 1
+                AND rp.Codigo NOT IN ('ASPIRANTE','BECADO')
+            )
+          ))
+          OR (@tipoCuenta = 'ESTUDIANTE'
+            AND NOT EXISTS (SELECT 1 FROM dbo.Empleados emp WHERE emp.IdUsuario = u.IdUsuario)
+            AND NOT EXISTS (
+              SELECT 1 FROM dbo.UsuariosRoles urp
+              JOIN dbo.Roles rp ON rp.IdRol = urp.IdRol
+              WHERE urp.IdUsuario = u.IdUsuario AND urp.Activo = 1
+                AND rp.Codigo NOT IN ('ASPIRANTE','BECADO')
+            ))
+        )
+      GROUP BY u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido, u.Cedula, identidad.Identificacion,
         u.Estado, u.CorreoVerificado, u.Activo, u.FechaCreacion
       ORDER BY u.FechaCreacion DESC
       OFFSET @desplazamiento ROWS FETCH NEXT @limite ROWS ONLY
@@ -33,9 +69,18 @@ export async function listarUsuarios(filtros) {
 export async function obtenerUsuario(idUsuario) {
   const pool = await obtenerPool();
   const usuario = await pool.request().input('id', sql.Int, idUsuario).query(`
-    SELECT IdUsuario, Correo, Nombre, PrimerApellido, SegundoApellido, Cedula, Estado,
-      CorreoVerificado, Activo, FechaCreacion, FechaActualizacion
-    FROM dbo.Usuarios WHERE IdUsuario = @id
+    SELECT u.IdUsuario, u.Correo, u.Nombre, u.PrimerApellido, u.SegundoApellido,
+      COALESCE(u.Cedula, identidad.Identificacion) AS Cedula, u.Estado,
+      u.CorreoVerificado, u.Activo, u.FechaCreacion, u.FechaActualizacion
+    FROM dbo.Usuarios u
+    OUTER APPLY (
+      SELECT TOP 1 dp.Identificacion
+      FROM dbo.Solicitudes s
+      JOIN dbo.DatosPersonalesSolicitud dp ON dp.IdSolicitud = s.IdSolicitud
+      WHERE s.IdUsuario = u.IdUsuario
+      ORDER BY s.FechaActualizacion DESC, s.IdSolicitud DESC
+    ) identidad
+    WHERE u.IdUsuario = @id
   `);
   if (!usuario.recordset[0]) return null;
   const roles = await pool.request().input('id', sql.Int, idUsuario).query(`
@@ -287,6 +332,20 @@ export async function crearMiembroComite(entrada) {
       OUTPUT INSERTED.IdMiembroComite VALUES (@idComite, @idEmpleado, @cargo, @inicio, @fin)
     `);
   return resultado.recordset[0].IdMiembroComite;
+}
+
+export async function asegurarRolComite(idUsuario) {
+  const pool = await obtenerPool();
+  await pool.request().input('idUsuario', sql.Int, idUsuario).query(`
+    DECLARE @idRol INT = (SELECT IdRol FROM dbo.Roles WHERE Codigo = 'COMITE_BECAS');
+    IF @idRol IS NOT NULL
+    BEGIN
+      IF EXISTS (SELECT 1 FROM dbo.UsuariosRoles WHERE IdUsuario = @idUsuario AND IdRol = @idRol)
+        UPDATE dbo.UsuariosRoles SET Activo = 1 WHERE IdUsuario = @idUsuario AND IdRol = @idRol;
+      ELSE
+        INSERT INTO dbo.UsuariosRoles (IdUsuario, IdRol) VALUES (@idUsuario, @idRol);
+    END
+  `);
 }
 
 export async function desactivarMiembroComite(idMiembro) {

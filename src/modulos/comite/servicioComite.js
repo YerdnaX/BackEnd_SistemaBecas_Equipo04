@@ -1,4 +1,5 @@
 import { errorValidacion, errorNoEncontrado, errorConflicto } from '../../utilidades/errorAplicacion.js';
+import { resolverDecisionMayoritaria, validarCantidadMiembrosComite } from '../../utilidades/evaluacionQuintilesComite.js';
 import * as datos from './accesoDatosComite.js';
 import { obtenerUsuarioPorId } from '../autenticacion/accesoDatosAutenticacion.js';
 import { crearNotificacion } from '../../servicios-compartidos/servicioNotificaciones.js';
@@ -12,83 +13,94 @@ export async function listarExpedientesDisponibles(idConvocatoria) {
 
 export async function crearSesion({ idConvocatoria, nombre, idsExpedientes }, idUsuario) {
   if (!idConvocatoria) throw errorValidacion('Debe indicar la convocatoria.');
-  if (!nombre?.trim()) throw errorValidacion('Debe indicar un nombre para la sesión.');
+  if (!nombre?.trim()) throw errorValidacion('Debe indicar un nombre para la sesion.');
   if (!Array.isArray(idsExpedientes) || idsExpedientes.length === 0) {
-    throw errorValidacion('Debe incluir al menos un expediente en la sesión.');
+    throw errorValidacion('Debe incluir al menos un expediente en la sesion.');
   }
-
+  const disponibles = await datos.obtenerExpedientesDisponibles(idConvocatoria);
+  const idsDisponibles = new Set(disponibles.map((item) => item.IdExpediente));
+  if (idsExpedientes.some((id) => !idsDisponibles.has(Number(id)))) {
+    throw errorValidacion('Todos los expedientes deben pertenecer al periodo, estar en comite, en quintil 1 o 2 y contar con informe social.');
+  }
   const idComite = await datos.obtenerOCrearComitePorDefecto();
-  const idSesionComite = await datos.crearSesion({ idComite, idConvocatoria, nombre, idCreadoPor: idUsuario, idsExpedientes });
-  return obtenerSesion(idSesionComite);
+  const miembros = await datos.listarMiembrosVigentes(idComite);
+  validarCantidadMiembrosComite(miembros.length);
+  const idSesionComite = await datos.crearSesion({
+    idComite,
+    idConvocatoria,
+    nombre: nombre.trim(),
+    idCreadoPor: idUsuario,
+    idsExpedientes: idsExpedientes.map(Number),
+    miembros
+  });
+  return obtenerSesion(idSesionComite, idUsuario);
 }
 
-export async function obtenerSesion(idSesionComite) {
-  const sesion = await datos.obtenerSesionPorId(idSesionComite);
-  if (!sesion) throw errorNoEncontrado('La sesión no existe.');
+export async function obtenerSesion(idSesionComite, idUsuario) {
+  const sesion = await datos.obtenerSesionPorId(idSesionComite, idUsuario);
+  if (!sesion) throw errorNoEncontrado('La sesion no existe.');
   return sesion;
 }
 
-export async function registrarDecision(idSesionComite, idExpediente, { tipoDecision, porcentajeBeca, motivo }, idUsuario) {
-  const sesion = await obtenerSesion(idSesionComite);
-  if (sesion.Estado !== 'ABIERTA') throw errorConflicto('Solo se pueden registrar decisiones en una sesión abierta.');
-
-  if (!TIPOS_DECISION.includes(tipoDecision)) throw errorValidacion('El tipo de decisión no es válido.');
-
-  if (['APROBADA', 'CONDICIONADA'].includes(tipoDecision)) {
-    const porcentaje = Number(porcentajeBeca);
-    if (Number.isNaN(porcentaje) || porcentaje < 0 || porcentaje > 100) {
-      throw errorValidacion('El porcentaje de beca debe estar entre 0 y 100.');
-    }
-  }
+export async function registrarVoto(idSesionComite, idExpediente, { tipoDecision, motivo }, idUsuario) {
+  const sesion = await obtenerSesion(idSesionComite, idUsuario);
+  if (sesion.Estado !== 'ABIERTA') throw errorConflicto('Solo se puede votar en una sesion abierta.');
+  if (!TIPOS_DECISION.includes(tipoDecision)) throw errorValidacion('El tipo de decision no es valido.');
   if (['RECHAZADA', 'CONDICIONADA'].includes(tipoDecision) && !motivo?.trim()) {
-    throw errorValidacion('Debe indicar el motivo de la decisión.');
+    throw errorValidacion('Debe indicar el motivo de este voto.');
   }
-
+  const miembro = await datos.obtenerMiembroSesionPorUsuario(idSesionComite, idUsuario);
+  if (!miembro) throw errorConflicto('Solo los integrantes registrados en esta sesion pueden votar.');
   const caso = await datos.obtenerCasoDeSesion(idSesionComite, idExpediente);
-  if (!caso) throw errorNoEncontrado('El expediente no forma parte de esta sesión.');
-
-  await datos.registrarDecision({
+  if (!caso) throw errorNoEncontrado('El expediente no forma parte de esta sesion.');
+  await datos.registrarVoto({
     idCasoSesion: caso.IdCasoSesion,
+    idMiembroComite: miembro.IdMiembroComite,
     tipoDecision,
-    porcentajeBeca: ['APROBADA', 'CONDICIONADA'].includes(tipoDecision) ? porcentajeBeca : null,
-    motivo,
-    idRegistradoPor: idUsuario
+    motivo: motivo?.trim()
   });
+  return obtenerSesion(idSesionComite, idUsuario);
+}
 
-  return obtenerSesion(idSesionComite);
+function construirAcuerdos(sesion) {
+  validarCantidadMiembrosComite(sesion.miembros.length);
+  return sesion.casos.map((caso) => {
+    const resultado = resolverDecisionMayoritaria(
+      caso.votos.map((voto) => voto.TipoDecision),
+      sesion.miembros.length
+    );
+    const motivos = caso.votos
+      .filter((voto) => voto.TipoDecision === resultado.decision && voto.Motivo)
+      .map((voto) => voto.Motivo.trim());
+    return {
+      idCasoSesion: caso.IdCasoSesion,
+      tipoDecision: resultado.decision,
+      motivo: motivos.join(' | ') || `Acuerdo por mayoria absoluta: ${resultado.cantidad} de ${resultado.total} votos.`
+    };
+  });
 }
 
 export async function cerrarSesion(idSesionComite, idUsuario) {
-  const sesion = await obtenerSesion(idSesionComite);
-  if (sesion.Estado !== 'ABIERTA') throw errorConflicto('La sesión ya fue cerrada.');
-  if (sesion.casos.some((caso) => !caso.IdDecision)) {
-    throw errorConflicto('Todos los casos deben tener una decisión registrada antes de cerrar la sesión.');
-  }
-
-  let resoluciones;
-  try {
-    resoluciones = await datos.cerrarSesionTransaccion(idSesionComite);
-  } catch (error) {
-    if (error.codigo === 'SESION_INCOMPLETA') {
-      throw errorConflicto('Todos los casos deben tener una decisión registrada antes de cerrar la sesión.');
-    }
-    throw error;
-  }
+  const sesion = await obtenerSesion(idSesionComite, idUsuario);
+  if (sesion.Estado !== 'ABIERTA') throw errorConflicto('La sesion ya fue cerrada.');
+  if (!sesion.miembroActual) throw errorConflicto('Solo un integrante de esta sesion puede cerrarla.');
+  const acuerdos = construirAcuerdos(sesion);
+  const resoluciones = await datos.cerrarSesionTransaccion(idSesionComite, acuerdos, idUsuario);
 
   const mensajesPorTipo = {
     APROBADA: 'Su solicitud de beca fue aprobada.',
     CONDICIONADA: 'Su solicitud de beca fue aprobada de forma condicionada.',
-    LISTA_ESPERA: 'Su solicitud quedó en lista de espera.',
+    LISTA_ESPERA: 'Su solicitud quedo en lista de espera.',
     RECHAZADA: 'Su solicitud de beca fue rechazada.'
   };
-
   for (const resolucion of resoluciones) {
     const usuario = await obtenerUsuarioPorId(resolucion.idUsuario);
+    const mensaje = mensajesPorTipo[resolucion.tipoResultado] || 'Se publico el resultado de su solicitud.';
     await crearNotificacion(null, {
       idUsuario: resolucion.idUsuario,
       tipo: 'RESOLUCION_PUBLICADA',
       titulo: 'Resultado de su solicitud disponible',
-      mensaje: mensajesPorTipo[resolucion.tipoResultado] || 'Se publicó el resultado de su solicitud.',
+      mensaje,
       enlace: `/aspirante/solicitudes/${resolucion.idSolicitud}/resultado`
     });
     if (usuario) {
@@ -97,10 +109,9 @@ export async function cerrarSesion(idSesionComite, idUsuario) {
         correoDestino: usuario.Correo,
         asunto: 'Resultado de su solicitud - SGBE CUC',
         tipoMensaje: 'RESOLUCION_PUBLICADA',
-        contenidoHtml: `<p>${mensajesPorTipo[resolucion.tipoResultado] || 'Se publicó el resultado de su solicitud.'} Número de resolución: ${resolucion.numeroResolucion}.</p>`
+        contenidoHtml: `<p>${mensaje} Numero de resolucion: ${resolucion.numeroResolucion}.</p>`
       });
     }
   }
-
-  return obtenerSesion(idSesionComite);
+  return obtenerSesion(idSesionComite, idUsuario);
 }

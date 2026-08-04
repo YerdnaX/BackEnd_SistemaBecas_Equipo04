@@ -15,7 +15,11 @@
     "actualizar:segmento2": "node scripts/aplicarActualizacionSegmentoDos.js",
     "actualizar:segmento3": "node scripts/aplicarActualizacionSegmentoTres.js",
     "actualizar:segmento4": "node scripts/aplicarActualizacionSegmentoCuatro.js",
-    "actualizar:segmento5": "node scripts/aplicarActualizacionSegmentoCinco.js"
+    "actualizar:segmento5": "node scripts/aplicarActualizacionSegmentoCinco.js",
+    "actualizar:evaluacion-comite": "node scripts/aplicarActualizacionEvaluacionComite.js",
+    "verificar:evaluacion-comite": "node scripts/verificarActualizacionEvaluacionComite.js",
+    "configurar:comite-pruebas": "node scripts/configurarComitePruebas.js",
+    "completar:cedulas-personal-pruebas": "node scripts/completarCedulasPersonalPruebas.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

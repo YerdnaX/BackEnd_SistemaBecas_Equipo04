@@ -1,6 +1,6 @@
 import { obtenerPool, sql } from '../../configuracion/baseDatos.js';
 
-export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResponsable, pagina = 1, tamanoPagina = 20 } = {}) {
+export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResponsable, periodo, pagina = 1, tamanoPagina = 20 } = {}) {
   const pool = await obtenerPool();
   const desplazamiento = (pagina - 1) * tamanoPagina;
   const solicitud = pool.request()
@@ -10,6 +10,7 @@ export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResp
   const condiciones = [];
   if (estado) { solicitud.input('estado', sql.VarChar(30), estado); condiciones.push('e.Estado = @estado'); }
   if (idConvocatoria) { solicitud.input('idConvocatoria', sql.Int, idConvocatoria); condiciones.push('s.IdConvocatoria = @idConvocatoria'); }
+  if (periodo) { solicitud.input('periodo', sql.NVarChar(30), periodo); condiciones.push('c.Periodo = @periodo'); }
   if (idEmpleadoResponsable) {
     solicitud.input('idEmpleado', sql.Int, idEmpleadoResponsable);
     condiciones.push(`EXISTS (SELECT 1 FROM dbo.AsignacionesExpediente a WHERE a.IdExpediente = e.IdExpediente AND a.Activa = 1 AND a.IdEmpleado = @idEmpleado)`);
@@ -17,9 +18,10 @@ export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResp
   const filtro = condiciones.length ? `WHERE ${condiciones.join(' AND ')}` : '';
 
   const resultado = await solicitud.query(`
-    SELECT e.*, s.IdConvocatoria, s.IdUsuario, c.Nombre AS NombreConvocatoria,
+    SELECT e.*, s.IdConvocatoria, s.IdUsuario, c.Nombre AS NombreConvocatoria, c.Periodo,
       u.Nombre AS NombreAspirante, u.PrimerApellido AS ApellidoAspirante,
-      dp.Identificacion AS CedulaAspirante,
+      dp.Identificacion AS CedulaAspirante, pq.Quintil, pq.IngresoPerCapita,
+      pq.EsElegible AS CumpleCriterioQuintil,
       (SELECT TOP 1 emp.NumeroEmpleado FROM dbo.AsignacionesExpediente a
         JOIN dbo.Empleados emp ON emp.IdEmpleado = a.IdEmpleado
         WHERE a.IdExpediente = e.IdExpediente AND a.Activa = 1) AS ResponsableAsignado,
@@ -29,11 +31,23 @@ export async function listarExpedientes({ estado, idConvocatoria, idEmpleadoResp
     JOIN dbo.Convocatorias c ON c.IdConvocatoria = s.IdConvocatoria
     JOIN dbo.Usuarios u ON u.IdUsuario = s.IdUsuario
     LEFT JOIN dbo.DatosPersonalesSolicitud dp ON dp.IdSolicitud = s.IdSolicitud
+    LEFT JOIN dbo.PrecalculosQuintil pq ON pq.IdExpediente = e.IdExpediente
     ${filtro}
     ORDER BY e.FechaApertura DESC
     OFFSET @desplazamiento ROWS FETCH NEXT @tamanoPagina ROWS ONLY
   `);
   return resultado.recordset;
+}
+
+export async function listarPeriodosExpedientes() {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().query(`
+    SELECT DISTINCT Periodo
+    FROM dbo.Convocatorias
+    WHERE Periodo IS NOT NULL AND LTRIM(RTRIM(Periodo)) <> ''
+    ORDER BY Periodo DESC
+  `);
+  return resultado.recordset.map((fila) => fila.Periodo);
 }
 
 export async function obtenerExpedientePorId(idExpediente) {
@@ -42,7 +56,7 @@ export async function obtenerExpedientePorId(idExpediente) {
     .input('id', sql.Int, idExpediente)
     .query(`
       SELECT e.*, s.IdConvocatoria, s.IdUsuario, s.Estado AS EstadoSolicitud,
-        c.Nombre AS NombreConvocatoria, u.Nombre AS NombreAspirante,
+        c.Nombre AS NombreConvocatoria, c.Periodo, u.Nombre AS NombreAspirante,
         u.PrimerApellido AS ApellidoAspirante, u.SegundoApellido AS SegundoApellidoAspirante, u.Correo AS CorreoAspirante
       FROM dbo.Expedientes e
       JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
@@ -213,6 +227,132 @@ export async function registrarElegibilidad({ idExpediente, esElegible, motivo, 
     `);
 }
 
+export async function recalcularQuintilesConvocatoria(idConvocatoria) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idConvocatoria', sql.Int, idConvocatoria)
+    .query(`
+      WITH Umbral AS (
+        SELECT TOP 1 AnioReferencia, MaximoQ1, MaximoQ2, MaximoQ3, MaximoQ4, Fuente
+        FROM dbo.UmbralesQuintilCostaRica
+        WHERE Activo = 1
+        ORDER BY AnioReferencia DESC
+      ), Base AS (
+        SELECT e.IdExpediente, s.IdConvocatoria, c.Periodo,
+          CAST(ds.IngresoMensual AS DECIMAL(12,2)) AS IngresoHogar,
+          ds.CantidadIntegrantes,
+          CAST(ds.IngresoMensual / NULLIF(ds.CantidadIntegrantes, 0) AS DECIMAL(12,2)) AS IngresoPerCapita,
+          u.AnioReferencia, u.MaximoQ1, u.MaximoQ2, u.MaximoQ3, u.MaximoQ4, u.Fuente
+        FROM dbo.Expedientes e
+        JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
+        JOIN dbo.Convocatorias c ON c.IdConvocatoria = s.IdConvocatoria
+        JOIN dbo.DatosSocioeconomicosSolicitud ds ON ds.IdSolicitud = s.IdSolicitud
+        CROSS JOIN Umbral u
+        WHERE s.IdConvocatoria = @idConvocatoria
+          AND s.Estado NOT IN ('BORRADOR','CANCELADA')
+      ), Calculado AS (
+        SELECT *, CASE
+          WHEN IngresoPerCapita <= MaximoQ1 THEN 1
+          WHEN IngresoPerCapita <= MaximoQ2 THEN 2
+          WHEN IngresoPerCapita <= MaximoQ3 THEN 3
+          WHEN IngresoPerCapita <= MaximoQ4 THEN 4
+          ELSE 5
+        END AS Quintil
+        FROM Base
+      )
+      MERGE dbo.PrecalculosQuintil AS destino
+      USING Calculado AS origen ON origen.IdExpediente = destino.IdExpediente
+      WHEN MATCHED THEN UPDATE SET
+        IdConvocatoria = origen.IdConvocatoria,
+        Periodo = origen.Periodo,
+        IngresoHogar = origen.IngresoHogar,
+        CantidadIntegrantes = origen.CantidadIntegrantes,
+        IngresoPerCapita = origen.IngresoPerCapita,
+        Quintil = origen.Quintil,
+        EsElegible = CASE WHEN origen.Quintil <= 2 THEN 1 ELSE 0 END,
+        Metodo = 'INEC_ENAHO_NACIONAL',
+        AnioReferencia = origen.AnioReferencia,
+        Fuente = origen.Fuente,
+        FechaCalculo = SYSUTCDATETIME()
+      WHEN NOT MATCHED THEN INSERT
+        (IdExpediente, IdConvocatoria, Periodo, IngresoHogar, CantidadIntegrantes,
+         IngresoPerCapita, Quintil, EsElegible, Metodo, AnioReferencia, Fuente)
+      VALUES
+        (origen.IdExpediente, origen.IdConvocatoria, origen.Periodo, origen.IngresoHogar,
+         origen.CantidadIntegrantes, origen.IngresoPerCapita, origen.Quintil,
+         CASE WHEN origen.Quintil <= 2 THEN 1 ELSE 0 END, 'INEC_ENAHO_NACIONAL',
+         origen.AnioReferencia, origen.Fuente);
+    `);
+}
+
+export async function obtenerPrecalculoQuintil(idExpediente) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().input('id', sql.Int, idExpediente).query(`
+    SELECT pq.*, u.MaximoQ1, u.MaximoQ2, u.MaximoQ3, u.MaximoQ4
+    FROM dbo.PrecalculosQuintil pq
+    LEFT JOIN dbo.UmbralesQuintilCostaRica u ON u.AnioReferencia = pq.AnioReferencia
+    WHERE pq.IdExpediente = @id
+  `);
+  return resultado.recordset[0] || null;
+}
+
+export async function obtenerDatosEvaluacionAutomatica(idExpediente) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().input('id', sql.Int, idExpediente).query(`
+    SELECT e.IdExpediente, e.IdSolicitud, s.IdConvocatoria, c.Periodo,
+      da.Promedio AS PromedioAcademico,
+      ns.Promedio AS PromedioNotasSimuladas,
+      ds.IngresoMensual, ds.GastoMensual, ds.CantidadIntegrantes,
+      pq.IngresoPerCapita, pq.Quintil, pq.EsElegible,
+      i.Recomendacion AS RecomendacionSocial
+    FROM dbo.Expedientes e
+    JOIN dbo.Solicitudes s ON s.IdSolicitud = e.IdSolicitud
+    JOIN dbo.Convocatorias c ON c.IdConvocatoria = s.IdConvocatoria
+    LEFT JOIN dbo.DatosAcademicosSolicitud da ON da.IdSolicitud = s.IdSolicitud
+    LEFT JOIN dbo.NotasSimuladasSolicitud ns ON ns.IdSolicitud = s.IdSolicitud
+    LEFT JOIN dbo.DatosSocioeconomicosSolicitud ds ON ds.IdSolicitud = s.IdSolicitud
+    LEFT JOIN dbo.PrecalculosQuintil pq ON pq.IdExpediente = e.IdExpediente
+    LEFT JOIN dbo.InformesSocialesExpediente i ON i.IdExpediente = e.IdExpediente
+    WHERE e.IdExpediente = @id
+  `);
+  return resultado.recordset[0] || null;
+}
+
+export async function obtenerInformeSocial(idExpediente) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().input('id', sql.Int, idExpediente).query(`
+    SELECT i.*, CONCAT(u.Nombre, ' ', u.PrimerApellido) AS TrabajadorSocial
+    FROM dbo.InformesSocialesExpediente i
+    JOIN dbo.Usuarios u ON u.IdUsuario = i.IdTrabajadorSocial
+    WHERE i.IdExpediente = @id
+  `);
+  return resultado.recordset[0] || null;
+}
+
+export async function guardarInformeSocial({ idExpediente, idTrabajadorSocial, resumen, hallazgos, recomendacion, observaciones }) {
+  const pool = await obtenerPool();
+  await pool.request()
+    .input('idExpediente', sql.Int, idExpediente)
+    .input('idTrabajadorSocial', sql.Int, idTrabajadorSocial)
+    .input('resumen', sql.NVarChar(1200), resumen)
+    .input('hallazgos', sql.NVarChar(2000), hallazgos)
+    .input('recomendacion', sql.VarChar(20), recomendacion)
+    .input('observaciones', sql.NVarChar(1000), observaciones || null)
+    .query(`
+      IF EXISTS (SELECT 1 FROM dbo.InformesSocialesExpediente WHERE IdExpediente = @idExpediente)
+        UPDATE dbo.InformesSocialesExpediente
+        SET IdTrabajadorSocial = @idTrabajadorSocial, Resumen = @resumen,
+          Hallazgos = @hallazgos, Recomendacion = @recomendacion,
+          Observaciones = @observaciones, FechaActualizacion = SYSUTCDATETIME()
+        WHERE IdExpediente = @idExpediente;
+      ELSE
+        INSERT INTO dbo.InformesSocialesExpediente
+          (IdExpediente, IdTrabajadorSocial, Resumen, Hallazgos, Recomendacion, Observaciones)
+        VALUES
+          (@idExpediente, @idTrabajadorSocial, @resumen, @hallazgos, @recomendacion, @observaciones);
+    `);
+}
+
 // --- Evaluacion ---
 
 export async function listarComponentesEvaluacion() {
@@ -239,7 +379,7 @@ export async function obtenerEvaluacionVigente(idExpediente) {
   return { ...evaluacion.recordset[0], puntajes: puntajes.recordset };
 }
 
-export async function guardarEvaluacion({ idExpediente, idEvaluador, puntajeTotal, puntajesPorComponente }) {
+export async function guardarEvaluacion({ idExpediente, idEvaluador, puntajeTotal, puntajesPorComponente, origen = 'MANUAL', quintil = null }) {
   const pool = await obtenerPool();
   const transaccion = new sql.Transaction(pool);
   await transaccion.begin();
@@ -248,10 +388,13 @@ export async function guardarEvaluacion({ idExpediente, idEvaluador, puntajeTota
       .input('idExpediente', sql.Int, idExpediente)
       .input('idEvaluador', sql.Int, idEvaluador)
       .input('puntajeTotal', sql.Decimal(6, 2), puntajeTotal)
+      .input('origen', sql.VarChar(20), origen)
+      .input('quintil', sql.TinyInt, quintil)
       .query(`
-        INSERT INTO dbo.EvaluacionesExpediente (IdExpediente, IdEvaluador, Estado, PuntajeTotal, FechaFinalizacion)
+        INSERT INTO dbo.EvaluacionesExpediente
+          (IdExpediente, IdEvaluador, Estado, PuntajeTotal, FechaFinalizacion, Origen, QuintilCalculado)
         OUTPUT INSERTED.IdEvaluacion
-        VALUES (@idExpediente, @idEvaluador, 'COMPLETA', @puntajeTotal, SYSUTCDATETIME())
+        VALUES (@idExpediente, @idEvaluador, 'COMPLETA', @puntajeTotal, SYSUTCDATETIME(), @origen, @quintil)
       `);
     const idEvaluacion = resultado.recordset[0].IdEvaluacion;
 

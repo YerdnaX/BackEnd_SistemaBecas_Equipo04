@@ -131,9 +131,24 @@ GO
 -- =====================================================================
 
 IF NOT EXISTS (SELECT 1 FROM dbo.Empleados e JOIN dbo.Usuarios u ON u.IdUsuario = e.IdUsuario WHERE u.Correo = N'trabajosocial.pruebas@cuc.ac.cr')
-    INSERT INTO dbo.Empleados (IdUsuario, NumeroEmpleado, Puesto, Departamento)
-    SELECT IdUsuario, N'EMP-PRUEBA-001', N'Trabajadora Social', N'Bienestar Estudiantil'
-    FROM dbo.Usuarios WHERE Correo = N'trabajosocial.pruebas@cuc.ac.cr';
+    INSERT INTO dbo.Empleados (IdUsuario, NumeroEmpleado, IdPuesto, IdDepartamento)
+    SELECT u.IdUsuario, N'EMP-PRUEBA-001', p.IdPuesto, d.IdDepartamento
+    FROM dbo.Usuarios u
+    LEFT JOIN dbo.Puestos p ON p.Nombre = N'Trabajador social'
+    LEFT JOIN dbo.Departamentos d ON d.Nombre = N'Bienestar Estudiantil'
+    WHERE u.Correo = N'trabajosocial.pruebas@cuc.ac.cr';
+
+INSERT INTO dbo.Empleados (IdUsuario, NumeroEmpleado, IdPuesto, IdDepartamento)
+SELECT u.IdUsuario, datos.NumeroEmpleado, p.IdPuesto, d.IdDepartamento
+FROM (VALUES
+    (N'admin.pruebas@cuc.ac.cr', N'EMP-COMITE-001'),
+    (N'coordinador.pruebas@cuc.ac.cr', N'EMP-COMITE-002'),
+    (N'comite.pruebas@cuc.ac.cr', N'EMP-COMITE-003')
+) datos(Correo, NumeroEmpleado)
+JOIN dbo.Usuarios u ON u.Correo = datos.Correo
+LEFT JOIN dbo.Puestos p ON p.Nombre = N'Administrativo'
+LEFT JOIN dbo.Departamentos d ON d.Nombre = N'Bienestar Estudiantil'
+WHERE NOT EXISTS (SELECT 1 FROM dbo.Empleados e WHERE e.IdUsuario = u.IdUsuario);
 GO
 
 -- =====================================================================
@@ -560,6 +575,54 @@ IF NOT EXISTS (SELECT 1 FROM dbo.Noticias WHERE Titulo = N'Apertura de la Convoc
         N'Ya se encuentra abierta la recepción de solicitudes de la Convocatoria Ordinaria de Prueba 2026-I. Consulte los requisitos en la sección de convocatorias.',
         'GENERAL', 'PUBLICADA', u.IdUsuario, DATEADD(DAY, -5, SYSUTCDATETIME())
     FROM dbo.Usuarios u WHERE u.Correo = N'admin.pruebas@cuc.ac.cr';
+GO
+
+-- Nomina impar de tres integrantes para probar la decision grupal del comite.
+UPDATE u
+SET Cedula = datos.Cedula, FechaActualizacion = SYSUTCDATETIME()
+FROM dbo.Usuarios u
+JOIN (VALUES
+  (N'admin.pruebas@cuc.ac.cr', '101010101'),
+  (N'coordinador.pruebas@cuc.ac.cr', '202020202'),
+  (N'trabajosocial.pruebas@cuc.ac.cr', '303030303'),
+  (N'comite.pruebas@cuc.ac.cr', '404040404'),
+  (N'finanzas.pruebas@cuc.ac.cr', '505050505'),
+  (N'registroacademico.pruebas@cuc.ac.cr', '606060606')
+) datos(Correo, Cedula) ON datos.Correo = u.Correo
+WHERE u.Cedula IS NULL;
+
+UPDATE dbo.Convocatorias
+SET Periodo = CASE
+  WHEN Nombre LIKE '%[12][0-9][0-9][0-9]-III%' THEN SUBSTRING(Nombre, PATINDEX('%[12][0-9][0-9][0-9]-III%', Nombre), 8)
+  WHEN Nombre LIKE '%[12][0-9][0-9][0-9]-II%' THEN SUBSTRING(Nombre, PATINDEX('%[12][0-9][0-9][0-9]-II%', Nombre), 7)
+  WHEN Nombre LIKE '%[12][0-9][0-9][0-9]-I%' THEN SUBSTRING(Nombre, PATINDEX('%[12][0-9][0-9][0-9]-I%', Nombre), 6)
+  ELSE CONCAT(YEAR(FechaInicio), '-', CASE WHEN MONTH(FechaInicio) <= 6 THEN 'I' ELSE 'II' END)
+END
+WHERE Periodo IS NULL OR LTRIM(RTRIM(Periodo)) = '';
+
+INSERT INTO dbo.UsuariosRoles (IdUsuario, IdRol)
+SELECT u.IdUsuario, r.IdRol
+FROM dbo.Usuarios u CROSS JOIN dbo.Roles r
+WHERE u.Correo IN (N'admin.pruebas@cuc.ac.cr', N'coordinador.pruebas@cuc.ac.cr', N'comite.pruebas@cuc.ac.cr')
+  AND r.Codigo = N'COMITE_BECAS'
+  AND NOT EXISTS (
+    SELECT 1 FROM dbo.UsuariosRoles ur WHERE ur.IdUsuario = u.IdUsuario AND ur.IdRol = r.IdRol
+  );
+
+INSERT INTO dbo.MiembrosComite (IdComite, IdEmpleado, Cargo, FechaInicio)
+SELECT c.IdComite, e.IdEmpleado, datos.Cargo, DATEADD(DAY, -1, SYSUTCDATETIME())
+FROM (VALUES
+    (N'admin.pruebas@cuc.ac.cr', N'Presidencia'),
+    (N'coordinador.pruebas@cuc.ac.cr', N'Secretaria'),
+    (N'comite.pruebas@cuc.ac.cr', N'Vocalia')
+) datos(Correo, Cargo)
+JOIN dbo.Usuarios u ON u.Correo = datos.Correo
+JOIN dbo.Empleados e ON e.IdUsuario = u.IdUsuario
+CROSS JOIN (SELECT TOP 1 IdComite FROM dbo.ComitesBeca WHERE Activo = 1 ORDER BY IdComite) c
+WHERE NOT EXISTS (
+  SELECT 1 FROM dbo.MiembrosComite m
+  WHERE m.IdComite = c.IdComite AND m.IdEmpleado = e.IdEmpleado AND m.Activo = 1
+);
 GO
 
 PRINT 'Datos de prueba del Segmento 01 insertados correctamente.';

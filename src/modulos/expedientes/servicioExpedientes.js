@@ -5,6 +5,7 @@ import { crearNotificacion } from '../../servicios-compartidos/servicioNotificac
 import { enviarCorreo } from '../../servicios-compartidos/servicioCorreo.js';
 import { obtenerPool, sql } from '../../configuracion/baseDatos.js';
 import { calcularPuntajePonderado, calcularPuntajeTotal } from '../../utilidades/calculoEvaluacion.js';
+import { puntajeSocioeconomicoPorQuintil, quintilEsElegible } from '../../utilidades/evaluacionQuintilesComite.js';
 
 async function obtenerExpedienteOFallar(idExpediente) {
   const expediente = await datos.obtenerExpedientePorId(idExpediente);
@@ -16,14 +17,21 @@ export async function listarExpedientes(filtros) {
   return datos.listarExpedientes(filtros);
 }
 
+export async function listarPeriodosExpedientes() {
+  return datos.listarPeriodosExpedientes();
+}
+
 export async function obtenerExpediente(idExpediente) {
   const expediente = await obtenerExpedienteOFallar(idExpediente);
-  const [documentos, historial, evaluacion] = await Promise.all([
+  await datos.recalcularQuintilesConvocatoria(expediente.IdConvocatoria);
+  const [documentos, historial, evaluacion, precalculoQuintil, informeSocial] = await Promise.all([
     datos.listarDocumentosExpediente(idExpediente),
     datos.obtenerHistorialExpediente(idExpediente),
-    datos.obtenerEvaluacionVigente(idExpediente)
+    datos.obtenerEvaluacionVigente(idExpediente),
+    datos.obtenerPrecalculoQuintil(idExpediente),
+    datos.obtenerInformeSocial(idExpediente)
   ]);
-  return { ...expediente, documentos, historial, evaluacion };
+  return { ...expediente, documentos, historial, evaluacion, precalculoQuintil, informeSocial };
 }
 
 async function obtenerUsuarioDelEmpleado(idEmpleado) {
@@ -119,6 +127,15 @@ export async function resolverElegibilidad(idExpediente, { esElegible, motivo },
   }
 
   if (esElegible) {
+    await datos.recalcularQuintilesConvocatoria(expediente.IdConvocatoria);
+    const precalculo = await datos.obtenerPrecalculoQuintil(idExpediente);
+    if (!precalculo) {
+      throw errorValidacion('No se puede calcular el quintil: faltan los datos socioeconomicos del hogar.');
+    }
+    if (!quintilEsElegible(precalculo.Quintil)) {
+      throw errorValidacion(`No se puede declarar elegible: el hogar pertenece al quintil ${precalculo.Quintil}; solo califican los quintiles 1 y 2.`);
+    }
+
     const documentos = await datos.listarDocumentosExpediente(idExpediente);
     const convocatoria = await datosConvocatorias.obtenerConvocatoriaPorId(expediente.IdConvocatoria);
     const requisitosObligatorios = convocatoria.requisitos.filter((requisito) => requisito.Obligatorio);
@@ -157,12 +174,16 @@ export async function resolverElegibilidad(idExpediente, { esElegible, motivo },
 }
 
 export async function obtenerEvaluacion(idExpediente) {
-  await obtenerExpedienteOFallar(idExpediente);
-  const [evaluacion, componentes] = await Promise.all([
+  const expediente = await obtenerExpedienteOFallar(idExpediente);
+  await datos.recalcularQuintilesConvocatoria(expediente.IdConvocatoria);
+  const [evaluacion, componentes, precalculoQuintil, datosAutomaticos, informeSocial] = await Promise.all([
     datos.obtenerEvaluacionVigente(idExpediente),
-    datos.listarComponentesEvaluacion()
+    datos.listarComponentesEvaluacion(),
+    datos.obtenerPrecalculoQuintil(idExpediente),
+    datos.obtenerDatosEvaluacionAutomatica(idExpediente),
+    datos.obtenerInformeSocial(idExpediente)
   ]);
-  return { evaluacion, componentes };
+  return { evaluacion, componentes, precalculoQuintil, datosAutomaticos, informeSocial };
 }
 
 export async function guardarEvaluacion(idExpediente, { puntajes }, idEvaluador) {
@@ -213,10 +234,101 @@ export async function guardarEvaluacion(idExpediente, { puntajes }, idEvaluador)
   return obtenerExpediente(idExpediente);
 }
 
+export async function guardarEvaluacionAutomatica(idExpediente, idEvaluador) {
+  const expediente = await obtenerExpedienteOFallar(idExpediente);
+  if (expediente.Estado !== 'ELEGIBLE') {
+    throw errorConflicto('Solo se puede evaluar un expediente declarado elegible.');
+  }
+
+  await datos.recalcularQuintilesConvocatoria(expediente.IdConvocatoria);
+  const [componentes, fuente] = await Promise.all([
+    datos.listarComponentesEvaluacion(),
+    datos.obtenerDatosEvaluacionAutomatica(idExpediente)
+  ]);
+  const sumaPorcentajes = componentes.reduce((total, componente) => total + Number(componente.Porcentaje), 0);
+  if (Math.round(sumaPorcentajes) !== 100) {
+    throw errorConflicto('La suma de los porcentajes de los componentes de evaluacion debe ser 100.');
+  }
+  if (!fuente || !quintilEsElegible(fuente.Quintil)) {
+    throw errorValidacion('La evaluacion automatica requiere un precalculo perteneciente a los quintiles 1 o 2.');
+  }
+
+  const promedio = Number(fuente.PromedioNotasSimuladas ?? fuente.PromedioAcademico ?? 0);
+  const puntajesPorComponente = componentes.map((componente) => {
+    let puntaje = 0;
+    let observacion = 'Sin fuente institucional configurada; puntaje automatico 0.';
+    if (componente.Codigo === 'ACADEMICO') {
+      puntaje = promedio;
+      observacion = fuente.PromedioNotasSimuladas != null
+        ? 'Calculado con el promedio de notas institucionales simuladas.'
+        : 'Calculado con el promedio academico declarado en la solicitud.';
+    } else if (componente.Codigo === 'SOCIOECONOMICO') {
+      puntaje = puntajeSocioeconomicoPorQuintil(fuente.Quintil);
+      observacion = `Calculado automaticamente a partir del quintil ${fuente.Quintil}.`;
+    }
+    puntaje = Math.min(Number(componente.PuntajeMaximo), Math.max(0, puntaje));
+    return {
+      idComponente: componente.IdComponente,
+      puntaje,
+      porcentaje: componente.Porcentaje,
+      puntajePonderado: calcularPuntajePonderado(puntaje, componente.Porcentaje),
+      observacion
+    };
+  });
+  const puntajeTotal = calcularPuntajeTotal(puntajesPorComponente.map((item) => item.puntajePonderado));
+
+  await datos.guardarEvaluacion({
+    idExpediente,
+    idEvaluador,
+    puntajeTotal,
+    puntajesPorComponente,
+    origen: 'AUTOMATICA',
+    quintil: fuente.Quintil
+  });
+  await datos.cambiarEstadoExpedienteYSolicitud(idExpediente, 'EVALUADA');
+  await datos.registrarHistorialExpediente({
+    idExpediente,
+    estadoAnterior: expediente.Estado,
+    estadoNuevo: 'EVALUADA',
+    idUsuario: idEvaluador,
+    observacion: `Evaluacion automatica. Puntaje total: ${puntajeTotal}. Quintil: ${fuente.Quintil}.`
+  });
+  await datos.recalcularRankingConvocatoria(expediente.IdConvocatoria);
+  return obtenerExpediente(idExpediente);
+}
+
+export async function obtenerInformeSocial(idExpediente) {
+  await obtenerExpedienteOFallar(idExpediente);
+  return datos.obtenerInformeSocial(idExpediente);
+}
+
+export async function guardarInformeSocial(idExpediente, entrada, idTrabajadorSocial) {
+  await obtenerExpedienteOFallar(idExpediente);
+  if (!entrada.resumen?.trim() || !entrada.hallazgos?.trim()) {
+    throw errorValidacion('El resumen y los hallazgos del informe social son obligatorios.');
+  }
+  if (!['FAVORABLE', 'CONDICIONADA', 'DESFAVORABLE'].includes(entrada.recomendacion)) {
+    throw errorValidacion('La recomendacion del informe social no es valida.');
+  }
+  await datos.guardarInformeSocial({
+    idExpediente,
+    idTrabajadorSocial,
+    resumen: entrada.resumen.trim(),
+    hallazgos: entrada.hallazgos.trim(),
+    recomendacion: entrada.recomendacion,
+    observaciones: entrada.observaciones?.trim()
+  });
+  return datos.obtenerInformeSocial(idExpediente);
+}
+
 export async function enviarComite(idExpediente, idUsuario) {
   const expediente = await obtenerExpedienteOFallar(idExpediente);
   if (expediente.Estado !== 'EVALUADA') {
     throw errorConflicto('Solo un expediente evaluado puede enviarse al comité.');
+  }
+  const informeSocial = await datos.obtenerInformeSocial(idExpediente);
+  if (!informeSocial) {
+    throw errorConflicto('Debe registrar el informe social antes de enviar el expediente al comite.');
   }
   await datos.cambiarEstadoExpedienteYSolicitud(idExpediente, 'EN_COMITE');
   await datos.registrarHistorialExpediente({
