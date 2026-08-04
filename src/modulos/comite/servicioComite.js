@@ -11,6 +11,10 @@ export async function listarExpedientesDisponibles(idConvocatoria) {
   return datos.obtenerExpedientesDisponibles(idConvocatoria);
 }
 
+export async function listarSesiones(idUsuario) {
+  return datos.listarSesionesParaUsuario(idUsuario);
+}
+
 export async function crearSesion({ idConvocatoria, nombre, idsExpedientes }, idUsuario) {
   if (!idConvocatoria) throw errorValidacion('Debe indicar la convocatoria.');
   if (!nombre?.trim()) throw errorValidacion('Debe indicar un nombre para la sesion.');

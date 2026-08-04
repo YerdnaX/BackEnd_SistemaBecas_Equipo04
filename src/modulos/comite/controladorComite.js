@@ -13,6 +13,11 @@ export const crearSesion = asincrono(async (req, res) => {
   enviarExito(res, { mensaje: 'Sesión de comité creada.', datos: sesion, estadoHttp: 201 });
 });
 
+export const listarSesiones = asincrono(async (req, res) => {
+  const sesiones = await servicio.listarSesiones(req.usuario.idUsuario);
+  enviarExito(res, { datos: sesiones });
+});
+
 export const obtenerSesion = asincrono(async (req, res) => {
   const sesion = await servicio.obtenerSesion(Number(req.params.id), req.usuario.idUsuario);
   enviarExito(res, { datos: sesion });

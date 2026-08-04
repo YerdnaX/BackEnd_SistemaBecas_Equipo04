@@ -21,9 +21,61 @@ export async function obtenerExpedientesDisponibles(idConvocatoria) {
     JOIN dbo.InformesSocialesExpediente i ON i.IdExpediente = e.IdExpediente
     LEFT JOIN dbo.RankingsConvocatoria r ON r.IdExpediente = e.IdExpediente
     WHERE e.Estado = 'EN_COMITE' ${filtroConvocatoria}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM dbo.CasosSesionComite casoExistente
+        JOIN dbo.SesionesComite sesionExistente
+          ON sesionExistente.IdSesionComite = casoExistente.IdSesionComite
+        WHERE casoExistente.IdExpediente = e.IdExpediente
+          AND sesionExistente.Estado = 'ABIERTA'
+      )
     ORDER BY r.Posicion ASC
   `);
   return resultado.recordset;
+}
+
+export async function listarSesionesParaUsuario(idUsuario) {
+  const pool = await obtenerPool();
+  const resultado = await pool.request().input('idUsuario', sql.Int, idUsuario).query(`
+    SELECT sc.IdSesionComite, sc.Nombre, sc.Estado, sc.FechaSesion,
+      sc.FechaCreacion, sc.FechaCierre, c.Nombre AS NombreConvocatoria, c.Periodo,
+      CONCAT(creador.Nombre, ' ', creador.PrimerApellido) AS NombreCreador,
+      (SELECT COUNT(*)
+       FROM dbo.CasosSesionComite cs
+       WHERE cs.IdSesionComite = sc.IdSesionComite) AS TotalCasos,
+      (SELECT COUNT(*)
+       FROM dbo.MiembrosSesionComite ms
+       WHERE ms.IdSesionComite = sc.IdSesionComite) AS TotalMiembros,
+      (SELECT COUNT(*)
+       FROM dbo.VotosComite v
+       JOIN dbo.CasosSesionComite cs ON cs.IdCasoSesion = v.IdCasoSesion
+       WHERE cs.IdSesionComite = sc.IdSesionComite) AS TotalVotos,
+      (SELECT COUNT(*)
+       FROM dbo.VotosComite v
+       JOIN dbo.CasosSesionComite cs ON cs.IdCasoSesion = v.IdCasoSesion
+       JOIN dbo.MiembrosComite mc ON mc.IdMiembroComite = v.IdMiembroComite
+       JOIN dbo.Empleados emp ON emp.IdEmpleado = mc.IdEmpleado
+       WHERE cs.IdSesionComite = sc.IdSesionComite
+         AND emp.IdUsuario = @idUsuario) AS MisVotos
+    FROM dbo.SesionesComite sc
+    JOIN dbo.Convocatorias c ON c.IdConvocatoria = sc.IdConvocatoria
+    JOIN dbo.Usuarios creador ON creador.IdUsuario = sc.IdCreadoPor
+    WHERE EXISTS (
+      SELECT 1
+      FROM dbo.MiembrosSesionComite ms
+      JOIN dbo.MiembrosComite mc ON mc.IdMiembroComite = ms.IdMiembroComite
+      JOIN dbo.Empleados emp ON emp.IdEmpleado = mc.IdEmpleado
+      WHERE ms.IdSesionComite = sc.IdSesionComite
+        AND emp.IdUsuario = @idUsuario
+    )
+    ORDER BY CASE WHEN sc.Estado = 'ABIERTA' THEN 0 ELSE 1 END,
+      sc.FechaCreacion DESC, sc.IdSesionComite DESC
+  `);
+  return resultado.recordset.map((sesion) => ({
+    ...sesion,
+    VotosEsperados: Number(sesion.TotalCasos) * Number(sesion.TotalMiembros),
+    MisVotosPendientes: Math.max(Number(sesion.TotalCasos) - Number(sesion.MisVotos), 0)
+  }));
 }
 
 export async function obtenerOCrearComitePorDefecto() {
